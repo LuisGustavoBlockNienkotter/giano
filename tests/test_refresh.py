@@ -194,3 +194,29 @@ def test_item_editor_asks_before_overwriting_external_change(g, project, other):
     run(scenario())
     assert g.items.get(a.item_id).data.title == "Editado aqui"
     assert [v.data.title for v in g.items.history(a.item_id)] == ["Original", "Editado fora", "Editado aqui"]
+
+
+def test_f5_item_editor_in_view_mode_rerenders(g, project, other):
+    """Reading an item in view mode (ctrl+t): F5 must update the rendered text too."""
+    from textual.widgets import Markdown
+
+    a = g.items.create(project.id, make("Original", body="texto antigo"))
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            await pilot.press("e")
+            await pilot.pause()
+            editor = app.screen
+            await pilot.press("ctrl+t")  # view mode
+            await pilot.pause()
+            md = editor.query_one("#body-markdown", Markdown)
+            assert md.source == "texto antigo"
+            other.items.update(a.item_id, replace(a.data, body="texto novo de fora"))
+            await pilot.press("f5")
+            await pilot.pause()
+            assert editor.query_one("#body", TextArea).text == "texto novo de fora"
+            assert md.source == "texto novo de fora"
+
+    run(scenario())

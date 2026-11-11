@@ -108,14 +108,17 @@ class ItemEditorScreen(Screen[ItemView | None]):
     async def action_toggle_preview(self) -> None:
         switcher = self.query_one(ContentSwitcher)
         if switcher.current == "body":
-            await self.query_one("#body-markdown", Markdown).update(
-                self.query_one("#body", TextArea).text or "_Sem descrição._"
-            )
+            await self._render_preview()
             switcher.current = "body-preview"
             self.query_one("#body-preview").focus()
         else:
             switcher.current = "body"
             self.query_one("#body", TextArea).focus()
+
+    async def _render_preview(self) -> None:
+        await self.query_one("#body-markdown", Markdown).update(
+            self.query_one("#body", TextArea).text or "_Sem descrição._"
+        )
 
     # -- changes made outside this editor (another Giano, the CLI, a script) --
 
@@ -131,6 +134,9 @@ class ItemEditorScreen(Screen[ItemView | None]):
         self.query_one("#tags", Input).value = ", ".join(d.tags)
         self.query_one("#body", TextArea).load_text(d.body)
         self._initial = self._read(validate=False)
+        if self.query_one(ContentSwitcher).current == "body-preview":
+            # In view mode the rendered Markdown must follow the new text too.
+            self.call_later(self._render_preview)
 
     def refresh_data(self) -> str | None:
         """F5: if the item changed elsewhere, reload it when the form is untouched,
