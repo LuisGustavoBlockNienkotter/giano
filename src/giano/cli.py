@@ -13,7 +13,7 @@ from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
-from giano.domain import ValidationError
+from giano.domain import ValidationError, parse_ranges
 from giano.services import Giano
 from giano.services import clipboard
 from giano.services.formatting import diff_markdown
@@ -137,11 +137,16 @@ def export_html(
         Optional[int],
         typer.Option("--comparar-com", help="Revisão base da seção de alterações (padrão: a anterior)."),
     ] = None,
+    itens: Annotated[
+        Optional[str],
+        typer.Option("--itens", "-i", help="Números dos itens a incluir, ex.: 1,3-5 (padrão: todos)."),
+    ] = None,
 ) -> None:
     """Gera um HTML autocontido da lista de um projeto numa revisão."""
     g = _giano(ctx)
     try:
-        result = g.exports.export_html(projeto, rev, saida, alteracoes, comparar_com)
+        numbers = parse_ranges(itens, lo=1) if itens else None
+        result = g.exports.export_html(projeto, rev, saida, alteracoes, comparar_com, numbers)
     except ValidationError as exc:
         _fail(str(exc))
         return

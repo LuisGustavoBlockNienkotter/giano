@@ -18,6 +18,7 @@ from giano.tui.dialogs import (
     ConfirmDialog,
     Filters,
     FilterDialog,
+    HtmlExportDialog,
     SettingsScreen,
 )
 from giano.tui.item_editor import ItemEditorScreen
@@ -406,13 +407,37 @@ class MainScreen(Screen):
     def action_export_html(self) -> None:
         if self.project is None:
             return
-        try:
-            result = self.app.giano.exports.export_html(self.project.code, self.view_rev)
-        except (ValidationError, OSError) as exc:
-            self.notify(str(exc), severity="error", title="Falha na exportação")
+        if not self.items:
+            self.notify("Nenhum item nesta revisão para exportar.", severity="warning")
             return
-        self.notify(str(result.path), title=f"HTML exportado (Rev. {self.view_rev or self.latest_rev})",
-                    timeout=8)
+        project, rev = self.project, self.view_rev
+        shown_rev = rev if rev is not None else self.latest_rev
+        ordered = sorted(self.items, key=SORT_KEYS[self.sort_column], reverse=self.sort_reverse)
+        filtered = (
+            {v.number for v in self.items if self.filters.matches(v)} if self.filters.active else None
+        )
+
+        def run(opts) -> None:
+            if opts is None:
+                return
+            try:
+                result = self.app.giano.exports.export_html(
+                    project.code, rev, changes=opts.changes, numbers=opts.numbers
+                )
+            except (ValidationError, OSError) as exc:
+                self.notify(str(exc), severity="error", title="Falha na exportação")
+                return
+            n = len(opts.numbers) if opts.numbers is not None else len(self.items)
+            self.notify(str(result.path), title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
+                        timeout=8)
+
+        self.app.push_screen(
+            HtmlExportDialog(
+                f"Exportar HTML — {project.code}, Rev. {shown_rev}: escolha os itens",
+                ordered, filtered,
+            ),
+            run,
+        )
 
     def action_export_claude(self) -> None:
         if self.project is None:

@@ -121,6 +121,46 @@ def normalize_tags(tags) -> tuple[str, ...]:
     return tuple(sorted({t for t in (normalize_tag(x) for x in tags) if t}))
 
 
+_RANGE_PART_RE = re.compile(r"^(\d+)(?:\s*-\s*(\d+))?$")
+
+
+def parse_ranges(text: str, lo: int | None = None, hi: int | None = None) -> frozenset[int]:
+    """Parse ``"1,3-5"`` into ``{1, 3, 4, 5}``. Spaces are ignored; ``5-3`` is accepted.
+
+    ``lo``/``hi`` bound the allowed values. Raises ValidationError (pt-BR) on bad input.
+    """
+    values: set[int] = set()
+    for part in text.replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = _RANGE_PART_RE.match(part)
+        if not m:
+            raise ValidationError(f"Intervalo inválido: '{part}'. Use números e faixas, ex.: 1,3-5.")
+        a = int(m.group(1))
+        b = int(m.group(2)) if m.group(2) else a
+        a, b = min(a, b), max(a, b)
+        if (lo is not None and a < lo) or (hi is not None and b > hi):
+            raise ValidationError(f"Fora do intervalo permitido ({lo} a {hi}): '{part}'.")
+        values.update(range(a, b + 1))
+    if not values:
+        raise ValidationError("Informe ao menos um número, ex.: 1,3-5.")
+    return frozenset(values)
+
+
+def format_ranges(values) -> str:
+    """Inverse of parse_ranges: ``{1, 3, 4, 5}`` → ``"1,3-5"``."""
+    nums = sorted(set(values))
+    parts, i = [], 0
+    while i < len(nums):
+        j = i
+        while j + 1 < len(nums) and nums[j + 1] == nums[j] + 1:
+            j += 1
+        parts.append(str(nums[i]) if i == j else f"{nums[i]}-{nums[j]}")
+        i = j + 1
+    return ",".join(parts)
+
+
 def normalize_body(body: str) -> str:
     """Trailing whitespace is not a real change: strip it (and normalize newlines)."""
     return body.replace("\r\n", "\n").rstrip()
@@ -175,6 +215,7 @@ class Revision:
     number: int
     created_at: str
     summary: str
+    item_id: int | None = None  # the item changed by this revision
 
 
 @dataclass(frozen=True)

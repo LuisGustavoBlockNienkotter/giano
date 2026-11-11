@@ -31,7 +31,7 @@ def insert_revision(
 
 
 def _rev(r: sqlite3.Row) -> Revision:
-    return Revision(r["project_id"], r["number"], r["created_at"], r["summary"])
+    return Revision(r["project_id"], r["number"], r["created_at"], r["summary"], r["item_id"])
 
 
 def list_revisions(db: Database, project_id: int) -> list[Revision]:

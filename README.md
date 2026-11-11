@@ -47,10 +47,10 @@ ou `giano --db arquivo.db` para usar outro.
 |---|---|---|---|
 | `n` | novo item | `r` | revisões (enter: ver; `d`: diferenças; `m`: marcar base) |
 | `e` / enter | editar item | `l` | voltar à última revisão |
-| `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida |
+| `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida (escolhendo os itens) |
 | `s` | mudar status | `c` | exportar para o Claude |
 | `/` | buscar | `a` | anotações |
-| `f` | filtros | `ctrl+n` | anotação rápida (qualquer tela) |
+| `f` | filtros (dificuldade aceita faixas: `1,3-5`) | `ctrl+n` | anotação rápida (qualquer tela) |
 | `o` | ordenar (ou clique no cabeçalho) | `p` | projetos |
 | `g` | configurações | `q` | sair |
 
@@ -63,7 +63,7 @@ Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto se
 giano nota "Reunião com o comercial" --projeto MERC   # abre o editor de anotação
 giano nota "Ideia" --texto "corpo da anotação"         # cria sem abrir o editor
 giano export claude --projeto MERC [--desde 2026-01-01] [--todas]
-giano export html --projeto MERC [--rev 9] [--sem-alteracoes]
+giano export html --projeto MERC [--rev 9] [--itens 1,3-5] [--sem-alteracoes]
 giano projetos | giano revisoes -p MERC | giano diff -p MERC 3 [9]
 giano config [--pasta-exportacao PASTA]
 giano demo

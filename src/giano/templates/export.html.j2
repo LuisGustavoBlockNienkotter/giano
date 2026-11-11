@@ -84,7 +84,7 @@ footer.doc { margin-top: 48px; color: var(--muted); font-size: 12px; border-top:
   <h1>{{ project.name }}</h1>
   <div class="meta">
     Revisão <strong>{{ rev }}</strong>{% if rev < latest %} (de {{ latest }}){% endif %}
-    · {{ rev_date }} · {{ total }} {{ "item" if total == 1 else "itens" }}
+    · {{ rev_date }} · {{ total }} {{ "item" if total == 1 else "itens" }}{% if total < total_in_rev %} (seleção de {{ total_in_rev }}){% endif %}
   </div>
 </header>
 

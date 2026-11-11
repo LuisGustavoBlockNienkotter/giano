@@ -176,8 +176,13 @@ class Exporter:
         rev: int | None = None,
         changes: bool = True,
         compare_to: int | None = None,
+        numbers: set[int] | frozenset[int] | None = None,
     ) -> tuple[str, int, str]:
-        """Render the HTML document. Returns (html, revision, revision date ISO)."""
+        """Render the HTML document. Returns (html, revision, revision date ISO).
+
+        ``numbers`` limits the document to those items (e.g. {1, 3} = MERC-1 and MERC-3);
+        ``None`` means all items of the revision.
+        """
         latest = self.items.latest_revision(project.id)
         rev = latest if rev is None else rev
         if not 0 <= rev <= latest:
@@ -185,6 +190,16 @@ class Exporter:
         revision = self.items.revision(project.id, rev)
         rev_date = revision.created_at if revision else project.created_at
         items = self.items.list_items(project.id, rev)
+        total_in_rev = len(items)
+        if numbers is not None:
+            missing = sorted(set(numbers) - {v.number for v in items})
+            if missing:
+                codes = ", ".join(f"{project.code}-{n}" for n in missing)
+                raise ValidationError(f"Itens que não existem na Rev. {rev}: {codes}.")
+            items = [v for v in items if v.number in numbers]
+            if not items:
+                raise ValidationError("Selecione ao menos um item para exportar.")
+        selected_ids = {v.item_id for v in items}
 
         groups = []
         for t in ItemType:
@@ -207,6 +222,12 @@ class Exporter:
                 raise ValidationError("A revisão de comparação deve ser anterior à exportada.")
             diff = self.items.diff(project.id, base, rev)
             revs = [r for r in self.items.revisions(project.id) if base < r.number <= rev]
+            if numbers is not None:
+                # Only the selected items: nothing about the others goes into the file.
+                diff.added = [v for v in diff.added if v.item_id in selected_ids]
+                diff.changed = [c for c in diff.changed if c.new.item_id in selected_ids]
+                diff.removed = []
+                revs = [r for r in revs if r.item_id in selected_ids]
             diff_revisions = sorted(revs, key=lambda r: r.number)
         else:
             diff_revisions = []
@@ -221,6 +242,7 @@ class Exporter:
             generated=self.clock().strftime("%d/%m/%Y %H:%M"),
             groups=groups,
             total=len(items),
+            total_in_rev=total_in_rev,
             diff=diff,
             diff_revisions=diff_revisions,
             display_value=display_value,
@@ -236,9 +258,10 @@ class Exporter:
         out_dir: Path | None = None,
         changes: bool = True,
         compare_to: int | None = None,
+        numbers: set[int] | frozenset[int] | None = None,
     ) -> ExportResult:
         project = self.projects.require(project_code)
-        html, rev, rev_date = self.html(project, rev, changes, compare_to)
+        html, rev, rev_date = self.html(project, rev, changes, compare_to, numbers)
         day = rev_date[:10]
         folder = Path(out_dir) if out_dir else self.settings.export_dir
         folder.mkdir(parents=True, exist_ok=True)

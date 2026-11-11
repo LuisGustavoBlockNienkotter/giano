@@ -1,4 +1,4 @@
-"""Modal dialogs: confirmation, filters, quick status, Claude export, settings."""
+"""Modal dialogs: confirmation, filters, quick status, exports, settings."""
 
 from __future__ import annotations
 
@@ -8,12 +8,31 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Footer, Input, Label, OptionList, Select, Static, TextArea
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Footer,
+    Input,
+    Label,
+    OptionList,
+    Select,
+    SelectionList,
+    Static,
+    TextArea,
+)
 from textual.widgets.option_list import Option
 
-from giano.domain import ItemStatus, ItemType, Priority, ValidationError
+from giano.domain import (
+    DIFFICULTY_RANGE,
+    ItemStatus,
+    ItemType,
+    Priority,
+    ValidationError,
+    format_ranges,
+    parse_ranges,
+)
 from giano.services.notes import parse_date
-from giano.tui.widgets import priority_select, select_value, status_select, type_select
+from giano.tui.widgets import plain, priority_select, select_value, status_select, type_select
 
 
 class ConfirmDialog(ModalScreen[bool]):
@@ -51,10 +70,11 @@ class Filters:
     priority: Priority | None = None
     tag: str | None = None
     hide_closed: bool = False
+    difficulty: frozenset[int] | None = None  # e.g. {1, 3, 4, 5} from "1,3-5"
 
     @property
     def active(self) -> bool:
-        return any((self.type, self.status, self.priority, self.tag, self.hide_closed))
+        return any((self.type, self.status, self.priority, self.tag, self.hide_closed, self.difficulty))
 
     def describe(self) -> str:
         parts = []
@@ -66,6 +86,8 @@ class Filters:
             parts.append(f"prioridade={self.priority.label}")
         if self.tag:
             parts.append(f"tag={self.tag}")
+        if self.difficulty:
+            parts.append(f"dificuldade={format_ranges(self.difficulty)}")
         if self.hide_closed:
             parts.append("sem concluídos/descartados")
         return ", ".join(parts)
@@ -79,6 +101,8 @@ class Filters:
         if self.priority and d.priority != self.priority:
             return False
         if self.tag and self.tag not in d.tags:
+            return False
+        if self.difficulty and d.difficulty not in self.difficulty:
             return False
         if self.hide_closed and d.status in (ItemStatus.DONE, ItemStatus.DISCARDED):
             return False
@@ -110,6 +134,12 @@ class FilterDialog(ModalScreen[Filters | None]):
                 value=c.tag if c.tag in self.tags else Select.NULL,
                 id="f-tag",
             )
+            yield Label("Dificuldade (ex.: 1,3-5; vazio = todas)")
+            yield Input(
+                format_ranges(c.difficulty) if c.difficulty else "",
+                placeholder="1,3-5",
+                id="f-difficulty",
+            )
             yield Checkbox("Ocultar concluídos e descartados", c.hide_closed, id="f-closed")
             with Horizontal(classes="buttons"):
                 yield Button("Aplicar", variant="primary", id="apply")
@@ -125,7 +155,20 @@ class FilterDialog(ModalScreen[Filters | None]):
         else:
             self.dismiss(None)
 
+    def on_input_submitted(self, _: Input.Submitted) -> None:
+        self.action_apply()
+
     def action_apply(self) -> None:
+        text = self.query_one("#f-difficulty", Input).value.strip()
+        try:
+            lo, hi = DIFFICULTY_RANGE[0], DIFFICULTY_RANGE[-1]
+            difficulty = parse_ranges(text, lo, hi) if text else None
+        except ValidationError as exc:
+            self.notify(str(exc), severity="error")
+            self.query_one("#f-difficulty", Input).focus()
+            return
+        if difficulty == frozenset(DIFFICULTY_RANGE):
+            difficulty = None  # all of them = no filter
         self.dismiss(
             Filters(
                 type=select_value(self.query_one("#f-type", Select)),
@@ -133,6 +176,7 @@ class FilterDialog(ModalScreen[Filters | None]):
                 priority=select_value(self.query_one("#f-priority", Select)),
                 tag=select_value(self.query_one("#f-tag", Select)),
                 hide_closed=self.query_one("#f-closed", Checkbox).value,
+                difficulty=difficulty,
             )
         )
 
@@ -277,6 +321,101 @@ class SettingsScreen(ModalScreen[None]):
         s.claude_prompt = self.query_one("#prompt", TextArea).text
         self.notify("Configurações salvas.")
         self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+@dataclass(frozen=True)
+class HtmlExportOptions:
+    numbers: frozenset[int] | None  # None = every item of the revision
+    changes: bool
+
+
+class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
+    """Choose which items go into the HTML file. Everything starts selected."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancelar"),
+        Binding("ctrl+s", "export", "Exportar", priority=True),
+        Binding("ctrl+t", "select_all", "Todos", priority=True),
+        Binding("ctrl+u", "select_none", "Nenhum", priority=True),
+    ]
+
+    def __init__(self, title: str, items: list, filtered: set[int] | None = None):
+        """``items``: ItemViews in display order; ``filtered``: numbers visible under the
+        current filter (offers the "só os filtrados" shortcut), or None."""
+        super().__init__()
+        self.title_text = title
+        self.items = items
+        self.filtered = filtered
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog wide"):
+            yield Label(self.title_text, classes="dialog-title", markup=False)
+            yield Static("espaço/clique marca e desmarca · ctrl+t todos · ctrl+u nenhum · "
+                         "ctrl+s exportar", classes="hint")
+            yield SelectionList(
+                *[(plain(f"{v.code:<9} {v.data.title}  ·  {v.data.status.label}"), v.number, True)
+                  for v in self.items],
+                id="export-items",
+            )
+            yield Static("", id="export-count", classes="muted", markup=False)
+            yield Checkbox("Incluir a seção \"Alterações nesta revisão\"", True, id="export-changes")
+            with Horizontal(classes="buttons"):
+                yield Button("Exportar", variant="primary", id="export")
+                yield Button("Todos", id="all")
+                yield Button("Nenhum", id="none")
+                if self.filtered is not None:
+                    yield Button("Só os filtrados", id="filtered")
+                yield Button("Cancelar", id="cancel")
+        yield Footer(compact=True)
+
+    def on_mount(self) -> None:
+        self.query_one(SelectionList).focus()
+        self._update_count()
+
+    def _update_count(self) -> None:
+        n = len(self.query_one(SelectionList).selected)
+        self.query_one("#export-count", Static).update(f"{n} de {len(self.items)} itens selecionados")
+
+    def on_selection_list_selected_changed(self, _: SelectionList.SelectedChanged) -> None:
+        self._update_count()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        bid = event.button.id
+        if bid == "export":
+            self.action_export()
+        elif bid == "all":
+            self.action_select_all()
+        elif bid == "none":
+            self.action_select_none()
+        elif bid == "filtered":
+            sl = self.query_one(SelectionList)
+            sl.deselect_all()
+            for n in self.filtered or ():
+                sl.select(n)
+        else:
+            self.dismiss(None)
+
+    def action_select_all(self) -> None:
+        self.query_one(SelectionList).select_all()
+
+    def action_select_none(self) -> None:
+        self.query_one(SelectionList).deselect_all()
+
+    def action_export(self) -> None:
+        selected = frozenset(self.query_one(SelectionList).selected)
+        if not selected:
+            self.notify("Selecione ao menos um item.", severity="warning")
+            return
+        all_numbers = {v.number for v in self.items}
+        self.dismiss(
+            HtmlExportOptions(
+                None if selected == all_numbers else selected,
+                self.query_one("#export-changes", Checkbox).value,
+            )
+        )
 
     def action_cancel(self) -> None:
         self.dismiss(None)
