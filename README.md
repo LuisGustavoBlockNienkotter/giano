@@ -26,7 +26,16 @@ uv run giano demo     # dados de exemplo (projetos LOJA e RH)
 uv run giano          # abre a interface
 ```
 
-Para ter o comando `giano` disponível em qualquer pasta: `uv tool install .`
+Para ter o comando `giano` disponível em qualquer pasta:
+
+```bash
+uv tool install . --python 3.12
+uv tool update-shell   # se o uv avisar que a pasta de ferramentas não está no PATH
+```
+
+(O `--python 3.12` é necessário porque o `uv tool` ignora o `.python-version` do projeto, e o
+`tree-sitter`, usado no destaque de Markdown, ainda não tem pacote pronto para o Python mais
+recente no Windows.)
 
 O banco fica na pasta de dados do usuário (ex.: `%LOCALAPPDATA%\giano\giano.db` no
 Windows, `~/.local/share/giano/giano.db` no Linux). Use `GIANO_DB=/caminho/arquivo.db`
