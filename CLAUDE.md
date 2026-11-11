@@ -14,6 +14,10 @@ uv run python -m pytest          # all tests (use `python -m pytest`: some Windo
 uv run python -m pytest tests/test_revisions.py -k delete
 ```
 
+Python is pinned to 3.12 by `.python-version`: `textual[syntax]` needs `tree-sitter`
+wheels, which don't exist yet for the newest Python on Windows (uv would try to compile
+them and fail without MSVC).
+
 ## Layout
 
 ```
