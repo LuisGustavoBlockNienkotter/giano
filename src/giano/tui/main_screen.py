@@ -73,7 +73,7 @@ class MainScreen(Screen):
         Binding("c", "export_claude", "Claude"),
         Binding("a", "notes", "Anotações"),
         Binding("p", "projects", "Projetos"),
-        Binding("g", "settings", "Config"),
+        Binding("g", "settings", "Config", show=False),
         Binding("q", "quit", "Sair"),
     ]
 
@@ -101,7 +101,7 @@ class MainScreen(Screen):
                 yield DataTable(id="items", cursor_type="row", zebra_stripes=True)
                 with VerticalScroll(id="preview-scroll"):
                     yield Markdown(id="preview")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one("#items", DataTable)
@@ -114,6 +114,10 @@ class MainScreen(Screen):
         # Coming back from another screen: data may have changed.
         if self.is_mounted:
             self.reload_projects(keep_rev=True)
+
+    def refresh_data(self) -> None:
+        """F5: reload projects and items, keeping project, revision, filters and selection."""
+        self.reload_projects(keep_rev=True)
 
     # -- data -----------------------------------------------------------------
 

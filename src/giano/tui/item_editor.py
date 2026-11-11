@@ -79,7 +79,7 @@ class ItemEditorScreen(Screen[ItemView | None]):
                 )
                 with VerticalScroll(id="body-preview"):
                     yield Markdown(id="body-markdown")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         self.query_one("#title", Input).focus()
@@ -117,8 +117,58 @@ class ItemEditorScreen(Screen[ItemView | None]):
             switcher.current = "body"
             self.query_one("#body", TextArea).focus()
 
-    def action_save(self) -> None:
+    # -- changes made outside this editor (another Giano, the CLI, a script) --
+
+    def _load(self, view: ItemView) -> None:
+        """Show ``view`` in the form (used when nothing was edited here)."""
+        d = view.data
+        self.item = view
+        self.query_one("#title", Input).value = d.title
+        self.query_one("#type", Select).value = d.type
+        self.query_one("#priority", Select).value = d.priority
+        self.query_one("#difficulty", Select).value = d.difficulty
+        self.query_one("#status", Select).value = d.status
+        self.query_one("#tags", Input).value = ", ".join(d.tags)
+        self.query_one("#body", TextArea).load_text(d.body)
+        self._initial = self._read(validate=False)
+
+    def refresh_data(self) -> str | None:
+        """F5: if the item changed elsewhere, reload it when the form is untouched,
+        or warn when there are unsaved edits here (they are never discarded)."""
+        if self.item is None:
+            return None
+        current = self.app.giano.items.get(self.item.item_id)
+        if current is None:
+            return f"{self.item.code} foi excluído fora daqui: não será possível salvá-lo."
+        if current.version_id == self.item.version_id:
+            return None
+        if not self._dirty():
+            self._load(current)
+            return None
+        return (f"{self.item.code} foi alterado fora daqui (Rev. {current.rev_start}). "
+                "Suas alterações não salvas foram mantidas; ao salvar, você confirma a substituição.")
+
+    def action_save(self, overwrite: bool = False) -> None:
         items = self.app.giano.items
+        if self.item is not None and not overwrite:
+            current = items.get(self.item.item_id)
+            if current is not None and current.version_id != self.item.version_id:
+
+                def answer(ok: bool | None) -> None:
+                    if ok:
+                        self.action_save(overwrite=True)
+
+                self.app.push_screen(
+                    ConfirmDialog(
+                        f"{self.item.code} foi alterado fora deste editor depois que você o abriu "
+                        f"(agora na Rev. {current.rev_start}).\n\n"
+                        "Salvar mesmo assim? O conteúdo deste editor substitui o de fora "
+                        "(numa nova revisão; a versão de fora continua no histórico).",
+                        "Salvar mesmo assim",
+                    ),
+                    answer,
+                )
+                return
         try:
             data = self._read()
             if self.item is None:

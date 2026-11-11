@@ -145,7 +145,7 @@ class FilterDialog(ModalScreen[Filters | None]):
                 yield Button("Aplicar", variant="primary", id="apply")
                 yield Button("Limpar", id="clear")
                 yield Button("Cancelar", id="cancel")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "apply":
@@ -249,7 +249,7 @@ class ClaudeExportDialog(ModalScreen[ClaudeExportOptions | None]):
             with Horizontal(classes="buttons"):
                 yield Button("Exportar", variant="primary", id="export")
                 yield Button("Cancelar", id="cancel")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "export":
@@ -300,7 +300,7 @@ class SettingsScreen(ModalScreen[None]):
                 yield Button("Restaurar template padrão", id="reset")
                 yield Button("Cancelar", id="cancel")
             yield Static(f"Banco de dados: {self.app.giano.db_path}", classes="muted", markup=False)
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
@@ -369,7 +369,7 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
                 if self.filtered is not None:
                     yield Button("Só os filtrados", id="filtered")
                 yield Button("Cancelar", id="cancel")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         self.query_one(SelectionList).focus()

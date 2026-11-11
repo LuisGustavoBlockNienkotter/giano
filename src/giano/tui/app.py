@@ -15,7 +15,8 @@ class GianoApp(App):
     CSS_PATH = "giano.tcss"
     ENABLE_COMMAND_PALETTE = True
     BINDINGS = [
-        Binding("ctrl+n", "quick_note", "Nota rápida", priority=True),
+        Binding("ctrl+n", "quick_note", "Nota", priority=True),
+        Binding("f5", "refresh_data", "Atualizar", priority=True),
     ]
 
     def __init__(self, giano: Giano, quick_note_id: int | None = None):
@@ -42,6 +43,22 @@ class GianoApp(App):
                timeout: float | None = None, markup: bool = True) -> None:
         # Messages often contain user text (titles, names): never parse it as markup.
         super().notify(message, title=title, severity=severity, timeout=timeout, markup=False)
+
+    def action_refresh_data(self) -> None:
+        """Reload data on every open screen (changes made by another Giano, the CLI,
+        a script…). Screens opt in by defining ``refresh_data() -> str | None``; a
+        returned string is a warning for the user (e.g. an item edited elsewhere)."""
+        warnings = []
+        for screen in reversed(self.screen_stack):
+            refresh = getattr(screen, "refresh_data", None)
+            if refresh is not None and screen.is_mounted:
+                message = refresh()
+                if message:
+                    warnings.append(message)
+        for message in warnings:
+            self.notify(message, severity="warning", timeout=10)
+        if not warnings:
+            self.notify("Dados atualizados.", timeout=2)
 
     def save_all_notes(self) -> None:
         """Flush every open note editor (used before quitting)."""

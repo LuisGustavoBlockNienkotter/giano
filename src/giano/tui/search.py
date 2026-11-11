@@ -29,7 +29,7 @@ class SearchScreen(Screen[SearchHit | None]):
         label = f"Somente no projeto {self.project_code}" if self.project_code else "Somente no projeto atual"
         yield Checkbox(label, False, id="only-project", disabled=self.project_id is None)
         yield DataTable(id="results", cursor_type="row", zebra_stripes=True)
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -44,6 +44,9 @@ class SearchScreen(Screen[SearchHit | None]):
 
     def on_input_submitted(self, _: Input.Submitted) -> None:
         self.action_focus_results()
+
+    def refresh_data(self) -> None:
+        self._run()
 
     def _run(self) -> None:
         text = self.query_one("#query", Input).value

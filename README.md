@@ -53,6 +53,11 @@ ou `giano --db arquivo.db` para usar outro.
 | `f` | filtros (dificuldade aceita faixas: `1,3-5`) | `ctrl+n` | anotação rápida (qualquer tela) |
 | `o` | ordenar (ou clique no cabeçalho) | `p` | projetos |
 | `g` | configurações | `q` | sair |
+| `F5` | atualizar os dados (em qualquer tela) | `ctrl+p` | paleta de comandos |
+
+`F5` recarrega o que foi alterado fora desta janela (outro Giano aberto, `giano nota`, um
+script). O que você está editando nunca é descartado: se o item ou a anotação foi alterado
+fora e você tem alterações não salvas, o Giano avisa e pede confirmação antes de substituir.
 
 No editor de item: `ctrl+s` salva, `ctrl+t` alterna editar/visualizar, `esc` cancela.
 Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto selecionado).

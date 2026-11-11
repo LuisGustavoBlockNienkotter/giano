@@ -44,7 +44,7 @@ class ProjectEditor(ModalScreen[Project | None]):
             with Horizontal(classes="buttons"):
                 yield Button("Salvar", variant="primary", id="save")
                 yield Button("Cancelar", id="cancel")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         self.query_one("#code" if self.project is None else "#name", Input).focus()
@@ -90,13 +90,16 @@ class ProjectsScreen(Screen[int | None]):
         yield Static("Projetos", classes="topbar")
         table = DataTable(id="projects", cursor_type="row", zebra_stripes=True)
         yield table
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.add_columns("Sigla", "Nome", "Situação", "Rev.", "Itens")
         self.reload()
         table.focus()
+
+    def refresh_data(self) -> None:
+        self.reload()
 
     def reload(self, select_id: int | None = None) -> None:
         g = self.app.giano

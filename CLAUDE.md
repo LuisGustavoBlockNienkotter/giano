@@ -65,5 +65,8 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot
 - User-facing errors: raise `domain.ValidationError` with a pt-BR message.
 - UI never imports `giano.db`; go through `app.giano` (the `Giano` facade).
 - DataTable cells with user text must use `widgets.plain()` (strings are parsed as markup).
+- F5 (`GianoApp.action_refresh_data`) calls `refresh_data() -> str | None` on every screen
+  in the stack that defines it; new screens that show DB data should implement it. Editors
+  never drop unsaved input (item editor confirms before overwriting an external change).
 - Services take a `clock` callable so tests are deterministic (`tests/conftest.py::FakeClock`).
 - Schema changes: add `(N, sql)` to `MIGRATIONS`; add a test.

@@ -207,7 +207,7 @@ class QuickNoteScreen(ModalScreen[Note | None]):
         with Vertical(classes="dialog quick-note"):
             yield Static("Anotação rápida — salvamento automático", classes="dialog-title")
             yield NoteEditor(self.note, self.project_id, id="quick-editor")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         target = "#note-body" if self.note else "#note-name"
@@ -258,7 +258,7 @@ class NotesScreen(Screen[None]):
                     classes="hint",
                 )
             yield Vertical(id="notes-editor-box")
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one("#notes-list", DataTable)
@@ -298,13 +298,41 @@ class NotesScreen(Screen[None]):
         elif not self.notes:
             self._open(None)
 
+    def refresh_data(self) -> str | None:
+        """F5: reload the list. The open note keeps unsaved typing (it is saved first);
+        if it was not touched here, it shows what was saved elsewhere."""
+        editor = self._current_editor()
+        if editor is None or editor.note is None:
+            self.reload()
+            return None
+        note_id, warning, reopen = editor.note.id, None, False
+        if editor.dirty:
+            try:
+                editor.save_now()
+            except ValidationError:
+                # Deleted elsewhere while being typed here: keep the text as a new note.
+                editor.note = None
+                note = editor.save_now()
+                note_id = note.id if note else None
+                warning = "A anotação aberta foi excluída fora daqui; o texto foi salvo como uma nova anotação."
+        else:
+            fresh = self.app.giano.notes.get(note_id)
+            if fresh is None:
+                note_id = None
+            elif fresh != editor.note:
+                reopen = True
+        self.reload(note_id)
+        if reopen:
+            self._open(note_id, force=True)
+        return warning
+
     def _current_editor(self) -> NoteEditor | None:
         editors = self.query(NoteEditor)
         return editors.first() if editors else None
 
-    def _open(self, note_id: int | None) -> None:
+    def _open(self, note_id: int | None, force: bool = False) -> None:
         editor = self._current_editor()
-        if editor is not None and editor.note is not None and editor.note.id == note_id:
+        if not force and editor is not None and editor.note is not None and editor.note.id == note_id:
             return
         note = self.app.giano.notes.get(note_id) if note_id is not None else None
         if note is None and note_id is not None:

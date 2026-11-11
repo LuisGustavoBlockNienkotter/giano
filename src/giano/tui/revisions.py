@@ -30,7 +30,7 @@ class DiffScreen(Screen[None]):
         diff = self.app.giano.items.diff(self.project.id, self.rev_from, self.rev_to)
         with VerticalScroll(id="diff-scroll"):
             yield Markdown(diff_markdown(diff))
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         self.query_one("#diff-scroll").focus()
@@ -64,7 +64,7 @@ class RevisionsScreen(Screen[int | None]):
             "marcada (m) — ou a anterior — e a selecionada",
             classes="hint",
         )
-        yield Footer(compact=True)
+        yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -78,6 +78,16 @@ class RevisionsScreen(Screen[int | None]):
             except Exception:
                 pass
         table.focus()
+
+    def refresh_data(self) -> None:
+        selected = self._selected()
+        self._fill()
+        if selected is not None:
+            table = self.query_one(DataTable)
+            try:
+                table.move_cursor(row=table.get_row_index(str(selected)))
+            except Exception:
+                pass
 
     def _fill(self) -> None:
         table = self.query_one(DataTable)
