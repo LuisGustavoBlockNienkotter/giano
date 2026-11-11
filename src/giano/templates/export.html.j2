@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Giano">
+<title>{{ project.code }} — {{ project.name }} · Rev. {{ rev }}</title>
+<style>
+:root {
+  --fg: #1f2328; --muted: #59636e; --bg: #ffffff; --panel: #f6f8fa; --line: #d1d9e0;
+  --accent: #0b5cad;
+  --crit: #b42318; --high: #c4320a; --med: #8a6a00; --low: #4b5563;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+main { max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }
+a { color: var(--accent); }
+header.doc { border-bottom: 3px solid var(--fg); padding-bottom: 14px; margin-bottom: 24px; }
+header.doc .kicker { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+header.doc h1 { margin: 4px 0 6px; font-size: 28px; line-height: 1.2; }
+header.doc .meta { color: var(--muted); font-size: 14px; }
+h2 { font-size: 21px; margin: 36px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h2 .count { color: var(--muted); font-weight: normal; font-size: 15px; }
+.context { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 18px; }
+nav.toc ol { padding-left: 20px; margin: 6px 0; }
+nav.toc li { margin: 2px 0; }
+nav.toc .group { font-weight: 600; margin-top: 10px; }
+nav.toc .code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
+article.item { border: 1px solid var(--line); border-radius: 6px; padding: 14px 18px 6px; margin: 14px 0;
+  break-inside: avoid; page-break-inside: avoid; }
+article.item h3 { margin: 0 0 8px; font-size: 17px; }
+article.item h3 .code { font-family: ui-monospace, Consolas, monospace; color: var(--muted); font-weight: 600; margin-right: 6px; }
+.labels { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.label { display: inline-block; font-size: 12px; line-height: 1; padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+.label.p-critical { color: #fff; background: var(--crit); border-color: var(--crit); }
+.label.p-high { color: var(--high); border-color: var(--high); background: #fff4ed; }
+.label.p-medium { color: var(--med); border-color: #d4b106; background: #fffbe6; }
+.label.p-low { color: var(--low); }
+.label.s-done { color: #1a7f37; border-color: #1a7f37; background: #eefbf1; }
+.label.s-discarded { color: var(--muted); text-decoration: line-through; }
+.label.s-in_progress { color: #8250df; border-color: #8250df; background: #f6f0ff; }
+.label.s-approved { color: #0969da; border-color: #0969da; background: #eef6ff; }
+.label.tag { background: #fff; color: var(--muted); }
+.body { overflow-wrap: anywhere; }
+.body :first-child { margin-top: 0; }
+.body h1, .body h2, .body h3, .body h4 { font-size: 15px; border: 0; margin: 14px 0 6px; padding: 0; }
+.body table { border-collapse: collapse; margin: 8px 0; }
+.body th, .body td { border: 1px solid var(--line); padding: 4px 8px; }
+.body blockquote { margin: 8px 0; padding: 0 12px; color: var(--muted); border-left: 3px solid var(--line); }
+code { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 13px;
+  background: var(--panel); padding: 1px 4px; border-radius: 4px; }
+pre.highlight { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+  overflow-x: auto; font-size: 13px; line-height: 1.45; }
+pre.highlight code { background: none; padding: 0; }
+.empty { color: var(--muted); font-style: italic; }
+.changes ul { padding-left: 20px; }
+.changes li { margin: 3px 0; }
+.changes .kind { font-weight: 600; }
+.changes .add { color: #1a7f37; } .changes .del { color: var(--crit); } .changes .mod { color: #9a6700; }
+.changes table { border-collapse: collapse; font-size: 14px; margin: 6px 0 12px; }
+.changes td, .changes th { border: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+footer.doc { margin-top: 48px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+{{ pygments_css }}
+@media print {
+  body { font-size: 11pt; }
+  main { max-width: none; padding: 0; }
+  a { color: inherit; text-decoration: none; }
+  nav.toc a::after { content: ""; }
+  h2 { break-after: avoid; page-break-after: avoid; }
+  pre.highlight { white-space: pre-wrap; }
+  .label { border-color: #888 !important; }
+}
+</style>
+</head>
+<body>
+<main>
+<header class="doc">
+  <div class="kicker">Lista de melhorias · {{ project.code }}</div>
+  <h1>{{ project.name }}</h1>
+  <div class="meta">
+    Revisão <strong>{{ rev }}</strong>{% if rev < latest %} (de {{ latest }}){% endif %}
+    · {{ rev_date }} · {{ total }} {{ "item" if total == 1 else "itens" }}
+  </div>
+</header>
+
+{% if project.description %}
+<section class="context">
+{{ description_html | safe }}
+</section>
+{% endif %}
+
+<nav class="toc">
+  <h2>Sumário</h2>
+  {% if not groups %}<p class="empty">Nenhum item nesta revisão.</p>{% endif %}
+  {% for g in groups %}
+  <div class="group"><a href="#tipo-{{ g.type.value }}">{{ g.type.plural }}</a> <span class="code">({{ g["items"]|length }})</span></div>
+  <ol>
+    {% for it in g["items"] %}
+    <li><a href="#{{ it.anchor }}"><span class="code">{{ it.v.code }}</span> {{ it.v.data.title }}</a></li>
+    {% endfor %}
+  </ol>
+  {% endfor %}
+  {% if diff %}<div class="group"><a href="#alteracoes">Alterações nesta revisão</a></div>{% endif %}
+</nav>
+
+{% for g in groups %}
+<section id="tipo-{{ g.type.value }}">
+  <h2>{{ g.type.plural }} <span class="count">({{ g["items"]|length }})</span></h2>
+  {% for it in g["items"] %}
+  {% set d = it.v.data %}
+  <article class="item" id="{{ it.anchor }}">
+    <h3><span class="code">{{ it.v.code }}</span>{{ d.title }}</h3>
+    <div class="labels">
+      <span class="label p-{{ d.priority.value }}">Prioridade: {{ d.priority.label }}</span>
+      <span class="label">Dificuldade: {{ d.difficulty }}/5</span>
+      <span class="label s-{{ d.status.value }}">{{ d.status.label }}</span>
+      {% for t in d.tags %}<span class="label tag">#{{ t }}</span>{% endfor %}
+    </div>
+    <div class="body">
+      {% if d.body %}{{ it.body_html | safe }}{% else %}<p class="empty">Sem descrição.</p>{% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endfor %}
+
+{% if diff %}
+<section id="alteracoes" class="changes">
+  <h2>Alterações nesta revisão
+    <span class="count">(Rev. {{ diff.rev_from }} → Rev. {{ diff.rev_to }})</span></h2>
+  {% if diff_revisions %}
+  <table>
+    <tr><th>Rev.</th><th>Data</th><th>Resumo</th></tr>
+    {% for r in diff_revisions %}
+    <tr><td>{{ r.number }}</td><td>{{ format_date(r.created_at) }}</td><td>{{ r.summary }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if diff.is_empty %}<p class="empty">Nenhuma diferença na lista.</p>{% endif %}
+  {% if diff.added %}
+  <p class="kind add">Adicionados ({{ diff.added|length }})</p>
+  <ul>{% for v in diff.added %}<li><a href="#{{ v.code.lower() }}">{{ v.code }}</a> {{ v.data.title }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if diff.removed %}
+  <p class="kind del">Removidos ({{ diff.removed|length }})</p>
+  <ul>{% for v in diff.removed %}<li>{{ v.code }} {{ v.data.title }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if diff.changed %}
+  <p class="kind mod">Alterados ({{ diff.changed|length }})</p>
+  <ul>
+  {% for c in diff.changed %}
+    <li><a href="#{{ c.code.lower() }}">{{ c.code }}</a> {{ c.new.data.title }}
+      <ul>
+      {% for f in c.changes %}
+        {% if f.field == "body" %}
+        <li>corpo alterado</li>
+        {% else %}
+        <li>{{ f.label }}: {{ display_value(f.field, f.old) }} → <strong>{{ display_value(f.field, f.new) }}</strong></li>
+        {% endif %}
+      {% endfor %}
+      </ul>
+    </li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+<footer class="doc">Gerado pelo Giano em {{ generated }} a partir da revisão {{ rev }} de {{ project.code }}.</footer>
+</main>
+</body>
+</html>

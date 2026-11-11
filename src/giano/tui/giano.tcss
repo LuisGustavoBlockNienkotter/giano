@@ -1,0 +1,268 @@
+/* Giano TUI styles */
+
+.topbar {
+    height: 1;
+    padding: 0 1;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+.topbar.readonly {
+    background: $warning;
+    color: $background;
+}
+
+.hint {
+    height: auto;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+.muted {
+    color: $text-muted;
+}
+
+.section-title {
+    padding: 0 1;
+    text-style: bold;
+    color: $text-muted;
+}
+
+/* ---- main screen ---- */
+
+#main-body {
+    height: 1fr;
+}
+
+#sidebar {
+    width: 28;
+    border-right: tall $panel;
+}
+
+#project-list {
+    height: 1fr;
+    border: none;
+}
+
+#content {
+    width: 1fr;
+}
+
+#filterbar {
+    height: 1;
+    padding: 0 1;
+    color: $text-muted;
+    background: $boost;
+}
+
+#items {
+    height: 1fr;
+    min-height: 6;
+}
+
+#preview-scroll {
+    height: 1fr;
+    border-top: tall $panel;
+    padding: 0 1;
+}
+
+/* ---- dialogs ---- */
+
+ModalScreen {
+    align: center middle;
+}
+
+.dialog {
+    width: 64;
+    height: auto;
+    max-height: 90%;
+    padding: 1 2;
+    border: thick $primary;
+    background: $surface;
+}
+
+.dialog.wide {
+    width: 90%;
+    max-width: 120;
+}
+
+.dialog > Select, .dialog > Input, .dialog > Checkbox {
+    margin-bottom: 1;
+}
+
+.dialog-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+.dialog-message {
+    margin-bottom: 1;
+}
+
+.buttons {
+    height: auto;
+    margin-top: 1;
+}
+
+.buttons Button {
+    margin-right: 2;
+}
+
+.row {
+    height: auto;
+}
+
+.code-col {
+    width: 18;
+    margin-right: 1;
+}
+
+.row > Vertical {
+    height: auto;
+}
+
+.switch-row {
+    margin: 1 0;
+}
+
+.switch-row Label {
+    padding: 1 1;
+}
+
+.dialog TextArea {
+    height: 12;
+}
+
+#choices {
+    height: auto;
+    max-height: 12;
+}
+
+/* ---- item editor ---- */
+
+#editor-form {
+    padding: 0 1;
+    height: 1fr;
+}
+
+#editor-form Label {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+#editor-selects {
+    height: auto;
+    margin-top: 1;
+}
+
+#editor-selects Select {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#body-switcher {
+    height: 1fr;
+}
+
+#body {
+    height: 1fr;
+}
+
+#body-preview {
+    height: 1fr;
+    border: tall $panel;
+    padding: 0 1;
+}
+
+/* ---- notes ---- */
+
+#notes-body {
+    height: 1fr;
+}
+
+#notes-left {
+    width: 64;
+    border-right: tall $panel;
+}
+
+#notes-list {
+    height: 1fr;
+}
+
+#notes-editor-box {
+    width: 1fr;
+    padding: 0 1;
+}
+
+NoteEditor {
+    height: 1fr;
+}
+
+.note-fields {
+    height: auto;
+}
+
+.note-fields .date-input {
+    width: 18;
+}
+
+.note-fields Input {
+    width: 1fr;
+}
+
+#note-project {
+    width: 2fr;
+}
+
+#note-status {
+    width: 1fr;
+}
+
+#note-body {
+    height: 1fr;
+}
+
+.note-status-bar {
+    height: 1;
+}
+
+#note-save-state {
+    width: auto;
+    color: $success;
+    padding-right: 3;
+}
+
+#note-links {
+    width: 1fr;
+    color: $text-muted;
+}
+
+.dialog.quick-note {
+    width: 90%;
+    max-width: 130;
+    height: 80%;
+}
+
+.quick-note NoteEditor {
+    height: 1fr;
+}
+
+/* ---- search / revisions ---- */
+
+#query {
+    margin: 1 1 0 1;
+}
+
+#only-project {
+    margin: 0 1;
+}
+
+#results, #revisions {
+    height: 1fr;
+}
+
+#diff-scroll {
+    height: 1fr;
+    padding: 0 2;
+}
