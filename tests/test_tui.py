@@ -6,6 +6,7 @@ import asyncio
 
 from textual.widgets import DataTable, Input, TextArea
 
+from giano.domain import ItemStatus
 from giano.services.demo import create_demo
 from giano.tui.app import GianoApp
 from giano.tui.item_editor import ItemEditorScreen
@@ -33,7 +34,12 @@ def test_main_screen_shows_latest_revision(g):
             assert screen.project.code == "LOJA"
             assert screen.view_rev is None and not screen.read_only
             table = screen.query_one("#items", DataTable)
-            assert table.row_count == len(g.items.list_items(screen.project.id))
+            # Default filter hides Concluído/Descartado (the demo has one done item).
+            items = g.items.list_items(screen.project.id)
+            open_items = [v for v in items if v.data.status not in (ItemStatus.DONE, ItemStatus.DISCARDED)]
+            assert len(open_items) < len(items)
+            assert table.row_count == len(open_items)
+            assert "sem concluídos/descartados" in str(screen.query_one("#filterbar").render())
             assert "(última)" in str(screen.query_one("#topbar").render())
 
     run(scenario())
@@ -250,5 +256,42 @@ def test_user_text_with_markup_characters(g):
             await pilot.pause()
             await pilot.press("escape")
             await pilot.pause()
+
+    run(scenario())
+
+
+def test_hide_closed_is_default_and_search_still_reaches_closed_items(g, project):
+    from tests.conftest import make
+    from giano.tui.dialogs import FilterDialog
+    from textual.widgets import Checkbox
+
+    g.items.create(project.id, make("Aberto"))
+    done = g.items.create(project.id, make("Entregue zebra", status=ItemStatus.DONE))
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            table = main.query_one("#items", DataTable)
+            assert table.row_count == 1
+            # the dialog opens with the box checked; "Limpar" keeps the default
+            await pilot.press("f")
+            await pilot.pause()
+            assert isinstance(app.screen, FilterDialog)
+            assert app.screen.query_one("#f-closed", Checkbox).value is True
+            await pilot.click("#clear")
+            await pilot.pause()
+            assert table.row_count == 1
+            # search jumps to a done item: it must be visible and selected
+            await pilot.press("/")
+            await pilot.pause()
+            await pilot.press(*"zebra")
+            await pilot.pause()
+            await pilot.press("enter", "enter")
+            await pilot.pause()
+            assert main.selected_item().item_id == done.item_id
+            assert table.row_count == 2
+            assert not main.filters.hide_closed
 
     run(scenario())

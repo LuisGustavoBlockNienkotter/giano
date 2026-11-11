@@ -53,7 +53,7 @@ def test_filters_difficulty(g, project):
     views = [g.items.create(project.id, make(f"d{d}", difficulty=d)) for d in range(1, 6)]
     f = Filters(difficulty=parse_ranges("1,3-4"))
     assert [v.data.difficulty for v in views if f.matches(v)] == [1, 3, 4]
-    assert f.active and f.describe() == "dificuldade=1,3-4"
+    assert f.active and f.describe() == "dificuldade=1,3-4, sem concluídos/descartados"
     both = Filters(difficulty=frozenset({4, 5}), status=ItemStatus.OPEN)
     assert [v.data.difficulty for v in views if both.matches(v)] == [4, 5]
 

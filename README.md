@@ -50,7 +50,7 @@ ou `giano --db arquivo.db` para usar outro.
 | `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida (escolhendo os itens) |
 | `s` | mudar status | `c` | exportar para o Claude |
 | `/` | buscar | `a` | anotações |
-| `f` | filtros (dificuldade aceita faixas: `1,3-5`) | `ctrl+n` | anotação rápida (qualquer tela) |
+| `f` | filtros (dificuldade aceita faixas: `1,3-5`; por padrão esconde concluídos e descartados) | `ctrl+n` | anotação rápida (qualquer tela) |
 | `o` | ordenar (ou clique no cabeçalho) | `p` | projetos |
 | `g` | configurações | `q` | sair |
 | `F5` | atualizar os dados (em qualquer tela) | `ctrl+p` | paleta de comandos |

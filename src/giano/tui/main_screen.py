@@ -363,7 +363,10 @@ class MainScreen(Screen):
                 if project and not project.active:
                     self.project = project  # keep an archived project visible
                 self.reload_projects(select_id=hit.project_id)
-            self.filters = Filters()
+            # Default filters, but never hide the item the user is jumping to.
+            found = self.app.giano.items.get(hit.id)
+            closed = found is not None and found.data.status in (ItemStatus.DONE, ItemStatus.DISCARDED)
+            self.filters = Filters(hide_closed=not closed)
             self.reload_items(select_item_id=hit.id)
             self.query_one("#items", DataTable).focus()
         else:

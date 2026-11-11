@@ -69,7 +69,7 @@ class Filters:
     status: ItemStatus | None = None
     priority: Priority | None = None
     tag: str | None = None
-    hide_closed: bool = False
+    hide_closed: bool = True  # default: Concluído/Descartado hidden from the list
     difficulty: frozenset[int] | None = None  # e.g. {1, 3, 4, 5} from "1,3-5"
 
     @property
