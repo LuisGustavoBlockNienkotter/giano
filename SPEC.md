@@ -37,6 +37,16 @@ Cada projeto tem a sua lista. Cada item tem:
 - corpo em **Markdown**, que é a única fonte de verdade. O HTML nunca é guardado no
   banco: é sempre gerado a partir do Markdown.
 
+### Arquivo de itens
+- Um item pode ser **arquivado manualmente** (nunca automaticamente): sai da lista normal
+  e das exportações (HTML e Claude), mas continua guardado com todas as características que
+  tinha no momento do arquivamento.
+- Arquivar e restaurar (voltar para a lista normal) geram revisão, como qualquer alteração.
+  O arquivamento é um campo da versão (`archived`), então a lista de qualquer revisão
+  antiga continua reproduzível.
+- Item arquivado é somente leitura: para editá-lo, restaure-o primeiro.
+- Na TUI, `v` alterna entre a lista e o arquivo; `z` arquiva (ou, no arquivo, restaura).
+
 ### Revisões da lista (requisito central)
 - **Toda alteração na lista de um projeto gera uma nova revisão**: criar, editar,
   excluir ou mudar status, prioridade ou tags de qualquer item.

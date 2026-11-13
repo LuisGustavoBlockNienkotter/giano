@@ -55,6 +55,10 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot
   inside one `db.transaction()`. Delete only closes the current version.
 - Saving with no real change (after `ItemData.normalized()`) must NOT create a revision.
 - Tags link to versions (`item_version_tags`), not to items.
+- Archiving = a new version with `archived = 1` (`ItemData.archived`), via
+  `ItemService.archive/unarchive`; `update()` refuses archived items and never changes the
+  flag. `list_items(archived=False)` is the normal list; exports (HTML, Claude) never
+  include archived items (HTML diff uses `include_archived=False`).
 - Notes are not versioned. `item_fts` (rowid = version id) is written by the repository;
   `note_fts` is maintained by triggers. Search joins `rev_end IS NULL`.
 

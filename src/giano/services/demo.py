@@ -89,6 +89,9 @@ def create_demo(g: Giano) -> list[str]:
     )
     g.items.delete(loja_items[6].item_id)
     g.items.set_status(loja_items[1].item_id, ItemStatus.DONE)
+    # An old decision, discarded and archived: out of the list, still kept.
+    g.items.set_status(loja_items[3].item_id, ItemStatus.DISCARDED)
+    g.items.archive(loja_items[3].item_id)
     g.items.set_status(rh_items[2].item_id, ItemStatus.IN_PROGRESS)
 
     today = date.today()

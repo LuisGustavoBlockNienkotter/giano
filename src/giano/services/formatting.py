@@ -17,6 +17,8 @@ def item_preview(v: ItemView, source_note: Note | None = None) -> str:
         "",
         f"Tags: {tags}",
     ]
+    if d.archived:
+        lines += ["", "> **Arquivado** — fora da lista normal e das exportações."]
     if source_note:
         lines += ["", f"_Origem: anotação de {source_note.note_date} — {source_note.name}_"]
     lines += ["", "---", "", demote_headings(d.body, 1) if d.body else "_Sem descrição._"]

@@ -78,8 +78,9 @@ def _tag_id(db: Database, name: str) -> int:
 def insert_version(db: Database, item_id: int, rev_start: int, data: ItemData) -> int:
     cur = db.execute(
         """INSERT INTO item_versions
-               (item_id, rev_start, rev_end, title, type, priority, difficulty, status, body)
-           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)""",
+               (item_id, rev_start, rev_end, title, type, priority, difficulty, status, body,
+                archived)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)""",
         (
             item_id,
             rev_start,
@@ -89,6 +90,7 @@ def insert_version(db: Database, item_id: int, rev_start: int, data: ItemData) -
             data.difficulty,
             data.status.value,
             data.body,
+            int(data.archived),
         ),
     )
     version_id = int(cur.lastrowid)
@@ -116,7 +118,7 @@ def close_version(db: Database, version_id: int, rev_end: int) -> None:
 _SELECT = """
 SELECT i.id AS item_id, i.project_id, p.code AS project_code, i.number, i.source_note_id,
        v.id AS version_id, v.rev_start, v.rev_end, v.title, v.type, v.priority,
-       v.difficulty, v.status, v.body,
+       v.difficulty, v.status, v.body, v.archived,
        (SELECT group_concat(name, char(31)) FROM (
             SELECT t.name FROM item_version_tags vt JOIN tags t ON t.id = vt.tag_id
             WHERE vt.version_id = v.id ORDER BY t.name)) AS tags
@@ -147,6 +149,7 @@ def _view(r: sqlite3.Row) -> ItemView:
             status=ItemStatus(r["status"]),
             tags=tags,
             body=r["body"],
+            archived=bool(r["archived"]),
         ),
     )
 

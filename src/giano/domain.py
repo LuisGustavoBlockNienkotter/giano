@@ -177,6 +177,9 @@ class ItemData:
     status: ItemStatus = ItemStatus.OPEN
     tags: tuple[str, ...] = ()
     body: str = ""
+    # Archived items keep all their content but leave the normal list and the
+    # exports; archiving/restoring is a versioned change like any other.
+    archived: bool = False
 
     def normalized(self) -> ItemData:
         title = " ".join(self.title.split())
@@ -196,6 +199,7 @@ class ItemData:
             status=ItemStatus(self.status),
             tags=normalize_tags(self.tags),
             body=normalize_body(self.body),
+            archived=bool(self.archived),
         )
 
 
@@ -262,6 +266,7 @@ FIELD_LABELS = {
     "status": "status",
     "tags": "tags",
     "body": "corpo",
+    "archived": "arquivado",
 }
 
 
@@ -279,6 +284,8 @@ class FieldChange:
         """Short human description, e.g. ``prioridade Alta → Média``."""
         if self.field == "body":
             return "corpo alterado"
+        if self.field == "archived":
+            return "arquivado" if self.new else "restaurado do arquivo"
         if self.field == "title":
             return f'título "{_shorten(self.old)}" → "{_shorten(self.new)}"'
         if self.field == "tags":
@@ -297,6 +304,8 @@ def display_value(field_name: str, value: object) -> str:
         return ", ".join(value) if value else "—"  # type: ignore[arg-type]
     if field_name == "difficulty":
         return f"{value}/5"
+    if field_name == "archived":
+        return "sim" if value else "não"
     return str(value)
 
 
@@ -307,7 +316,7 @@ def _shorten(text: object, limit: int = 40) -> str:
 
 def compare_items(old: ItemData, new: ItemData) -> list[FieldChange]:
     changes: list[FieldChange] = []
-    for name in ("title", "type", "priority", "difficulty", "status", "tags", "body"):
+    for name in ("title", "type", "priority", "difficulty", "status", "tags", "body", "archived"):
         a, b = getattr(old, name), getattr(new, name)
         if a != b:
             changes.append(FieldChange(name, a, b))

@@ -8,6 +8,11 @@ append-only temporal versions:
 * the new content is inserted with ``rev_start = N + 1``;
 * deleting only closes the current version.
 
+Archiving is a versioned change too: the new version is a copy of the current
+content with ``archived = True`` (restoring does the opposite). Archived items
+keep everything they had, but they are read-only until restored and stay out of
+the normal list and of the exports.
+
 Saving without a real change does not create a revision.
 """
 
@@ -67,11 +72,20 @@ class ItemService:
 
     # -- queries ----------------------------------------------------------
 
-    def list_items(self, project_id: int, rev: int | None = None) -> list[ItemView]:
-        """The list at revision ``rev`` (default: latest)."""
+    def list_items(
+        self, project_id: int, rev: int | None = None, archived: bool | None = None
+    ) -> list[ItemView]:
+        """The list at revision ``rev`` (default: latest).
+
+        ``archived``: ``None`` = every item, ``False`` = only the normal list,
+        ``True`` = only the archived items.
+        """
         if rev is None:
             rev = self.latest_revision(project_id)
-        return repo.list_at_revision(self.db, project_id, rev)
+        items = repo.list_at_revision(self.db, project_id, rev)
+        if archived is not None:
+            items = [v for v in items if v.data.archived == archived]
+        return items
 
     def get(self, item_id: int, rev: int | None = None) -> ItemView | None:
         if rev is None:
@@ -118,14 +132,42 @@ class ItemService:
             current = repo.get_current(self.db, item_id)
             if current is None:
                 raise ValidationError("Item não encontrado ou excluído.")
-            changes = compare_items(current.data, data)
-            if not changes:
-                return None
-            summary = f"{current.code}: " + "; ".join(c.describe() for c in changes)
-            rev = self._new_revision(current.project_id, summary, item_id)
-            repo.close_version(self.db, current.version_id, rev)
-            repo.insert_version(self.db, item_id, rev, data)
-            return repo.get_current(self.db, item_id)
+            if current.data.archived:
+                raise ValidationError(
+                    f"{current.code} está arquivado: restaure-o para a lista antes de editar."
+                )
+            # Archiving has its own operation; an edit never archives or restores.
+            return self._save(current, replace(data, archived=False))
+
+    def _save(self, current: ItemView, data: ItemData) -> ItemView | None:
+        changes = compare_items(current.data, data)
+        if not changes:
+            return None
+        summary = f"{current.code}: " + "; ".join(c.describe() for c in changes)
+        rev = self._new_revision(current.project_id, summary, current.item_id)
+        repo.close_version(self.db, current.version_id, rev)
+        repo.insert_version(self.db, current.item_id, rev, data)
+        return repo.get_current(self.db, current.item_id)
+
+    def archive(self, item_id: int) -> ItemView:
+        """Move an item to the archive, keeping all its content (new revision)."""
+        return self._set_archived(item_id, True)
+
+    def unarchive(self, item_id: int) -> ItemView:
+        """Bring an archived item back to the normal list (new revision)."""
+        return self._set_archived(item_id, False)
+
+    def _set_archived(self, item_id: int, archived: bool) -> ItemView:
+        with self.db.transaction():
+            current = repo.get_current(self.db, item_id)
+            if current is None:
+                raise ValidationError("Item não encontrado ou excluído.")
+            if current.data.archived == archived:
+                state = "já está arquivado" if archived else "não está arquivado"
+                raise ValidationError(f"{current.code} {state}.")
+            if not self._project(current.project_id).active:
+                raise ValidationError("Projeto arquivado: somente leitura.")
+            return self._save(current, replace(current.data, archived=archived))  # type: ignore[return-value]
 
     def set_status(self, item_id: int, status: ItemStatus) -> ItemView | None:
         current = self._require(item_id)
@@ -159,15 +201,22 @@ class ItemService:
 
     # -- diff -------------------------------------------------------------
 
-    def diff(self, project_id: int, rev_from: int, rev_to: int) -> RevisionDiff:
-        """Differences going from revision ``rev_from`` to ``rev_to``."""
+    def diff(
+        self, project_id: int, rev_from: int, rev_to: int, include_archived: bool = True
+    ) -> RevisionDiff:
+        """Differences going from revision ``rev_from`` to ``rev_to``.
+
+        With ``include_archived=False`` archived items count as absent: archiving
+        shows up as a removal and restoring as an addition (used by the HTML export).
+        """
         project = self._project(project_id)
         latest = self.latest_revision(project_id)
         for r in (rev_from, rev_to):
             if not 0 <= r <= latest:
                 raise ValidationError(f"Revisão {r} não existe (última: {latest}).")
-        before = {v.item_id: v for v in repo.list_at_revision(self.db, project_id, rev_from)}
-        after = {v.item_id: v for v in repo.list_at_revision(self.db, project_id, rev_to)}
+        only = None if include_archived else False
+        before = {v.item_id: v for v in self.list_items(project_id, rev_from, only)}
+        after = {v.item_id: v for v in self.list_items(project_id, rev_to, only)}
         result = RevisionDiff(project=project, rev_from=rev_from, rev_to=rev_to)
         for item_id, view in after.items():
             old = before.get(item_id)

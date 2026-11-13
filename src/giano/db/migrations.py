@@ -111,8 +111,15 @@ CREATE TRIGGER notes_ad AFTER DELETE ON notes BEGIN
 END;
 """
 
+# Archiving an item = a new version with archived = 1 (same content otherwise).
+V2 = """
+ALTER TABLE item_versions
+    ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1));
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, V1),
+    (2, V2),
 ]
 
 

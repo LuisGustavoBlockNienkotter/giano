@@ -13,6 +13,7 @@ nova revisão, e qualquer revisão anterior pode ser consultada, comparada e exp
 - Exportação para o Claude (Markdown com contexto, lista atual e anotações pendentes)
 - Exportação HTML autocontida, pronta para enviar ou imprimir
 - Busca textual (SQLite FTS5) em itens e anotações
+- Arquivo de itens: tire da lista e das exportações o que não quer mais ver, sem perder nada
 
 ## Instalação
 
@@ -49,6 +50,7 @@ ou `giano --db arquivo.db` para usar outro.
 | `e` / enter | editar item | `l` | voltar à última revisão |
 | `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida (escolhendo os itens) |
 | `s` | mudar status | `c` | exportar para o Claude |
+| `z` | arquivar item (no arquivo: restaurar) | `v` | alternar lista / arquivo |
 | `/` | buscar | `a` | anotações |
 | `f` | filtros (dificuldade aceita faixas: `1,3-5`; por padrão esconde concluídos e descartados) | `ctrl+n` | anotação rápida (qualquer tela) |
 | `o` | ordenar (ou clique no cabeçalho) | `p` | projetos |
@@ -58,6 +60,12 @@ ou `giano --db arquivo.db` para usar outro.
 `F5` recarrega o que foi alterado fora desta janela (outro Giano aberto, `giano nota`, um
 script). O que você está editando nunca é descartado: se o item ou a anotação foi alterado
 fora e você tem alterações não salvas, o Giano avisa e pede confirmação antes de substituir.
+
+**Arquivo**: itens que você não quer mais ver (ex.: concluídos há tempos) podem ser
+arquivados com `z`. Eles saem da lista normal e das exportações (HTML e Claude), mas ficam
+guardados com tudo o que tinham; `v` mostra o arquivo, onde `z` devolve o item à lista.
+Arquivar e restaurar geram revisão, como qualquer alteração. Item arquivado é somente
+leitura até ser restaurado.
 
 No editor de item: `ctrl+s` salva, `ctrl+t` alterna editar/visualizar, `esc` cancela.
 Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto selecionado).

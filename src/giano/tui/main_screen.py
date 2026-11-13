@@ -48,6 +48,9 @@ SORT_KEYS = {
     "tags": lambda v: ", ".join(v.data.tags),
 }
 
+# The archive is mostly done/discarded items: don't hide them there by default.
+ARCHIVE_FILTERS = Filters(hide_closed=False)
+
 PRIORITY_STYLE = {
     "critical": "bold red",
     "high": "dark_orange",
@@ -55,7 +58,9 @@ PRIORITY_STYLE = {
     "low": "dim",
 }
 
-EDIT_ACTIONS = {"new_item", "edit_item", "delete_item", "quick_status"}
+EDIT_ACTIONS = {"new_item", "edit_item", "delete_item", "quick_status", "archive_item", "unarchive_item"}
+# Actions that make no sense on an archived item (it is read-only until restored).
+NOT_IN_ARCHIVE = {"new_item", "edit_item", "quick_status", "archive_item", "export_html"}
 
 
 class MainScreen(Screen):
@@ -64,6 +69,9 @@ class MainScreen(Screen):
         Binding("e", "edit_item", "Editar"),
         Binding("delete", "delete_item", "Excluir"),
         Binding("s", "quick_status", "Status"),
+        Binding("z", "archive_item", "Arquivar"),
+        Binding("z", "unarchive_item", "Restaurar"),
+        Binding("v", "toggle_archive_view", "Arquivo"),
         Binding("/", "search", "Buscar", key_display="/"),
         Binding("f", "filters", "Filtros"),
         Binding("o", "sort", "Ordenar", show=False),
@@ -85,6 +93,8 @@ class MainScreen(Screen):
         self.latest_rev = 0
         self.items: list[ItemView] = []
         self.filters = Filters()
+        self.show_archived = False  # False = normal list, True = the archive
+        self.archive_filters = ARCHIVE_FILTERS
         self.sort_column = "priority"
         self.sort_reverse = False
 
@@ -153,6 +163,8 @@ class MainScreen(Screen):
         if changed:
             self.view_rev = None
             self.filters = Filters()
+            self.show_archived = False
+            self.archive_filters = ARCHIVE_FILTERS
         elif not keep_rev:
             self.view_rev = None
         self.project = project
@@ -168,12 +180,12 @@ class MainScreen(Screen):
             self.latest_rev = g.items.latest_revision(self.project.id)
             if self.view_rev is not None and self.view_rev >= self.latest_rev:
                 self.view_rev = None
-            self.items = g.items.list_items(self.project.id, self.view_rev)
+            self.items = g.items.list_items(self.project.id, self.view_rev, self.show_archived)
         if select_item_id is None:
             current = self.selected_item()
             select_item_id = current.item_id if current else None
         visible = sorted(
-            (v for v in self.items if self.filters.matches(v)),
+            (v for v in self.items if self.current_filters.matches(v)),
             key=SORT_KEYS[self.sort_column],
             reverse=self.sort_reverse,
         )
@@ -214,14 +226,30 @@ class MainScreen(Screen):
                 text = f"Giano │ {p.code} — {p.name} │ Rev. {self.latest_rev} (última)"
             if not p.active:
                 text += " │ projeto arquivado"
+            if self.show_archived:
+                text += " │ ARQUIVO (v: voltar à lista)"
             top.update(text)
             top.set_class(self.read_only, "readonly")
+            top.set_class(self.show_archived and not self.read_only, "archive")
         arrow = "↓" if self.sort_reverse else "↑"
         sort_label = dict(COLUMNS)[self.sort_column]
-        bar = f"{shown} de {len(self.items)} itens · ordem: {sort_label} {arrow} (o ou clique no cabeçalho)"
-        if self.filters.active:
-            bar += f" · filtros: {self.filters.describe()} (f para alterar)"
+        noun = "itens arquivados" if self.show_archived else "itens"
+        bar = f"{shown} de {len(self.items)} {noun} · ordem: {sort_label} {arrow} (o ou clique no cabeçalho)"
+        if self.current_filters.active:
+            bar += f" · filtros: {self.current_filters.describe()} (f para alterar)"
         self.query_one("#filterbar", Static).update(bar)
+
+    @property
+    def current_filters(self) -> Filters:
+        """The normal list and the archive keep their own filters."""
+        return self.archive_filters if self.show_archived else self.filters
+
+    @current_filters.setter
+    def current_filters(self, value: Filters) -> None:
+        if self.show_archived:
+            self.archive_filters = value
+        else:
+            self.filters = value
 
     def selected_item(self) -> ItemView | None:
         table = self.query_one("#items", DataTable)
@@ -259,7 +287,7 @@ class MainScreen(Screen):
         self.update_preview()
 
     def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
-        if not self.read_only:
+        if not self.read_only and not self.show_archived:
             self.action_edit_item()
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -273,6 +301,12 @@ class MainScreen(Screen):
     # -- bindings state -------------------------------------------------------
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "archive_item" and self.show_archived:
+            return False  # hidden: "z" means Restaurar in the archive
+        if action == "unarchive_item" and not self.show_archived:
+            return False
+        if action in NOT_IN_ARCHIVE and self.show_archived:
+            return None  # shown but disabled
         if action in EDIT_ACTIONS:
             if self.project is None or self.read_only or not self.project.active:
                 return None  # shown but disabled
@@ -280,7 +314,8 @@ class MainScreen(Screen):
                 return None
         if action == "latest":
             return self.read_only  # only shown while viewing an old revision
-        if action in ("filters", "sort", "revisions", "export_html", "export_claude"):
+        if action in ("filters", "sort", "revisions", "export_html", "export_claude",
+                      "toggle_archive_view"):
             return True if self.project is not None else None
         return True
 
@@ -299,13 +334,20 @@ class MainScreen(Screen):
             return False
         return True
 
+    def _guard_not_archive(self) -> bool:
+        if self.show_archived:
+            self.notify("Item arquivado: somente leitura. Tecle z para restaurá-lo à lista.",
+                        severity="warning")
+            return False
+        return True
+
     def action_new_item(self) -> None:
-        if self._guard_editable():
+        if self._guard_not_archive() and self._guard_editable():
             self.app.push_screen(ItemEditorScreen(self.project), self._after_edit)
 
     def action_edit_item(self) -> None:
         v = self.selected_item()
-        if v and self._guard_editable():
+        if v and self._guard_not_archive() and self._guard_editable():
             self.app.push_screen(ItemEditorScreen(self.project, v), self._after_edit)
 
     def _after_edit(self, view: ItemView | None) -> None:
@@ -329,9 +371,41 @@ class MainScreen(Screen):
             answer,
         )
 
-    def action_quick_status(self) -> None:
+    def action_archive_item(self) -> None:
+        v = self.selected_item()
+        if v is None or not self._guard_not_archive() or not self._guard_editable():
+            return
+        try:
+            new = self.app.giano.items.archive(v.item_id)
+        except ValidationError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        self.notify(f"{v.code} arquivado (Rev. {new.rev_start}). Tecle v para ver o arquivo.")
+        self.reload_items()
+
+    def action_unarchive_item(self) -> None:
         v = self.selected_item()
         if v is None or not self._guard_editable():
+            return
+        try:
+            new = self.app.giano.items.unarchive(v.item_id)
+        except ValidationError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        self.notify(f"{v.code} restaurado à lista (Rev. {new.rev_start}).")
+        self.reload_items()
+
+    def action_toggle_archive_view(self) -> None:
+        if self.project is None:
+            return
+        self.show_archived = not self.show_archived
+        self.reload_items()
+        if self.show_archived and not self.items:
+            self.notify("Nenhum item arquivado nesta revisão.")
+
+    def action_quick_status(self) -> None:
+        v = self.selected_item()
+        if v is None or not self._guard_not_archive() or not self._guard_editable():
             return
 
         def apply(status) -> None:
@@ -366,7 +440,10 @@ class MainScreen(Screen):
             # Default filters, but never hide the item the user is jumping to.
             found = self.app.giano.items.get(hit.id)
             closed = found is not None and found.data.status in (ItemStatus.DONE, ItemStatus.DISCARDED)
-            self.filters = Filters(hide_closed=not closed)
+            self.show_archived = found is not None and found.data.archived
+            self.current_filters = (
+                ARCHIVE_FILTERS if self.show_archived else Filters(hide_closed=not closed)
+            )
             self.reload_items(select_item_id=hit.id)
             self.query_one("#items", DataTable).focus()
         else:
@@ -379,10 +456,11 @@ class MainScreen(Screen):
 
         def apply(f: Filters | None) -> None:
             if f is not None:
-                self.filters = f
+                self.current_filters = f
                 self.reload_items()
 
-        self.app.push_screen(FilterDialog(self.filters, tags), apply)
+        cleared = ARCHIVE_FILTERS if self.show_archived else Filters()
+        self.app.push_screen(FilterDialog(self.current_filters, tags, cleared), apply)
 
     def action_sort(self) -> None:
         keys = [k for k, _ in COLUMNS]
@@ -412,7 +490,7 @@ class MainScreen(Screen):
         self.reload_items()
 
     def action_export_html(self) -> None:
-        if self.project is None:
+        if self.project is None or not self._guard_not_archive():
             return
         if not self.items:
             self.notify("Nenhum item nesta revisão para exportar.", severity="warning")

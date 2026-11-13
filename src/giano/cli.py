@@ -172,10 +172,12 @@ def demo(ctx: typer.Context) -> None:
 def projetos(ctx: typer.Context) -> None:
     """Lista os projetos."""
     g = _giano(ctx)
-    table = Table("Sigla", "Nome", "Rev.", "Itens", "Situação")
+    table = Table("Sigla", "Nome", "Rev.", "Itens", "Arquivados", "Situação")
     for p in g.projects.list():
         rev = g.items.latest_revision(p.id)
-        table.add_row(p.code, Text(p.name), str(rev), str(len(g.items.list_items(p.id, rev))),
+        items = g.items.list_items(p.id, rev)
+        archived = sum(v.data.archived for v in items)
+        table.add_row(p.code, Text(p.name), str(rev), str(len(items) - archived), str(archived),
                       "ativo" if p.active else "arquivado")
     console.print(table)
 

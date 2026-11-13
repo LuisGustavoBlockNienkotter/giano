@@ -7,6 +7,7 @@ from dataclasses import replace
 import pytest
 
 from giano.db import Database
+from giano.db.migrations import MIGRATIONS
 from giano.domain import ItemStatus, ItemType, Priority, ValidationError
 from tests.conftest import make
 
@@ -172,5 +173,5 @@ def test_migrations_are_idempotent(tmp_path):
     db.close()
     db = Database(path)
     assert db.query_one("SELECT MAX(version) FROM schema_version")[0] >= 1
-    assert db.query_one("SELECT COUNT(*) FROM schema_version")[0] == 1
+    assert db.query_one("SELECT COUNT(*) FROM schema_version")[0] == len(MIGRATIONS)
     db.close()

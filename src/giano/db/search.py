@@ -23,7 +23,7 @@ def search_items(db: Database, text: str, project_id: int | None = None, limit: 
         return []
     sql = """
         SELECT i.id AS item_id, p.code || '-' || i.number AS code, p.id AS project_id,
-               v.title, v.status,
+               v.title, v.status, v.archived,
                snippet(item_fts, -1, '[', ']', '…', 12) AS snippet
         FROM item_fts
         JOIN item_versions v ON v.id = item_fts.rowid AND v.rev_end IS NULL

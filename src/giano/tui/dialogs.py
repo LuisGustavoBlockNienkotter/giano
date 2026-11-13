@@ -115,10 +115,11 @@ class FilterDialog(ModalScreen[Filters | None]):
         Binding("ctrl+s", "apply", "Aplicar", priority=True),
     ]
 
-    def __init__(self, current: Filters, tags: list[str]):
+    def __init__(self, current: Filters, tags: list[str], cleared: Filters | None = None):
         super().__init__()
         self.current = current
         self.tags = tags
+        self.cleared = cleared or Filters()  # what "Limpar" returns
 
     def compose(self) -> ComposeResult:
         c = self.current
@@ -151,7 +152,7 @@ class FilterDialog(ModalScreen[Filters | None]):
         if event.button.id == "apply":
             self.action_apply()
         elif event.button.id == "clear":
-            self.dismiss(Filters())
+            self.dismiss(self.cleared)
         else:
             self.dismiss(None)
 

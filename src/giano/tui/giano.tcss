@@ -13,6 +13,10 @@
     color: $background;
 }
 
+.topbar.archive {
+    background: $secondary;
+}
+
 .hint {
     height: auto;
     padding: 0 1;

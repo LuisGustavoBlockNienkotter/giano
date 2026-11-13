@@ -27,9 +27,10 @@ class SearchService:
     def search(self, text: str, project_id: int | None = None, limit: int = 100) -> list[SearchHit]:
         hits: list[SearchHit] = []
         for r in repo.search_items(self.db, text, project_id, limit):
+            status = ItemStatus(r["status"]).label + (" (arquivado)" if r["archived"] else "")
             hits.append(
                 SearchHit("item", r["item_id"], r["project_id"], r["code"], r["title"],
-                          ItemStatus(r["status"]).label, _flat(r["snippet"]))
+                          status, _flat(r["snippet"]))
             )
         for r in repo.search_notes(self.db, text, project_id, limit):
             label = r["note_date"] + (f" · {r['project_code']}" if r["project_code"] else "")

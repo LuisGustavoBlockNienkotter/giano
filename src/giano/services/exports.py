@@ -91,7 +91,7 @@ class Exporter:
     ) -> tuple[str, int]:
         """Build the Markdown document. Returns (content, number of notes)."""
         rev = self.items.latest_revision(project.id)
-        items = sorted(self.items.list_items(project.id, rev), key=sort_key)
+        items = sorted(self.items.list_items(project.id, rev, archived=False), key=sort_key)
         if note_ids is not None:
             notes = [n for n in (self.notes.get(i) for i in note_ids) if n]
             notes.sort(key=lambda n: (n.note_date, n.created_at, n.id))
@@ -181,7 +181,8 @@ class Exporter:
         """Render the HTML document. Returns (html, revision, revision date ISO).
 
         ``numbers`` limits the document to those items (e.g. {1, 3} = MERC-1 and MERC-3);
-        ``None`` means all items of the revision.
+        ``None`` means all items of the revision. Archived items never go into the
+        document (not even in the changes section).
         """
         latest = self.items.latest_revision(project.id)
         rev = latest if rev is None else rev
@@ -189,9 +190,15 @@ class Exporter:
             raise ValidationError(f"Revisão {rev} não existe (última: {latest}).")
         revision = self.items.revision(project.id, rev)
         rev_date = revision.created_at if revision else project.created_at
-        items = self.items.list_items(project.id, rev)
+        everything = self.items.list_items(project.id, rev)
+        archived_ids = {v.item_id for v in everything if v.data.archived}
+        items = [v for v in everything if not v.data.archived]
         total_in_rev = len(items)
         if numbers is not None:
+            archived = sorted(v.number for v in everything if v.data.archived and v.number in numbers)
+            if archived:
+                codes = ", ".join(f"{project.code}-{n}" for n in archived)
+                raise ValidationError(f"Itens arquivados na Rev. {rev} não são exportados: {codes}.")
             missing = sorted(set(numbers) - {v.number for v in items})
             if missing:
                 codes = ", ".join(f"{project.code}-{n}" for n in missing)
@@ -220,8 +227,11 @@ class Exporter:
             base = rev - 1 if compare_to is None else compare_to
             if not 0 <= base < rev:
                 raise ValidationError("A revisão de comparação deve ser anterior à exportada.")
-            diff = self.items.diff(project.id, base, rev)
+            diff = self.items.diff(project.id, base, rev, include_archived=False)
             revs = [r for r in self.items.revisions(project.id) if base < r.number <= rev]
+            # Items archived at this revision are left out entirely.
+            diff.removed = [v for v in diff.removed if v.item_id not in archived_ids]
+            revs = [r for r in revs if r.item_id not in archived_ids]
             if numbers is not None:
                 # Only the selected items: nothing about the others goes into the file.
                 diff.added = [v for v in diff.added if v.item_id in selected_ids]

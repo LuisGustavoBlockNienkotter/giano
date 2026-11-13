@@ -110,7 +110,7 @@ class ProjectsScreen(Screen[int | None]):
             rev = g.items.latest_revision(p.id)
             table.add_row(
                 plain(p.code), plain(p.name), "ativo" if p.active else "arquivado", str(rev),
-                str(len(g.items.list_items(p.id, rev))), key=str(p.id),
+                str(len(g.items.list_items(p.id, rev, archived=False))), key=str(p.id),
             )
         target = select_id or previous
         if target is not None:
