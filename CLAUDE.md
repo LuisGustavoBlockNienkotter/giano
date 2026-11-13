@@ -41,7 +41,9 @@ src/giano/
   tui/               Textual screens; app.py (GianoApp), main_screen.py, item_editor.py,
                      notes.py (NoteEditor autosave, QuickNoteScreen), revisions.py,
                      search.py, projects.py, dialogs.py, widgets.py, giano.tcss
-  cli.py             Typer app (entry point `giano`); no subcommand = TUI
+  cli.py             Typer app (entry point `giano`); no subcommand = TUI; `giano item ...`
+                     / `giano itens` = non-interactive item commands (used by a user-level
+                     `giano` skill in ~/.claude/skills so Claude can file items from any folder)
 tests/               pytest; test_tui.py drives the app with Textual's pilot
 ```
 

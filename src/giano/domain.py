@@ -7,6 +7,7 @@ in Portuguese (``.label``).
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -159,6 +160,23 @@ def format_ranges(values) -> str:
         parts.append(str(nums[i]) if i == j else f"{nums[i]}-{nums[j]}")
         i = j + 1
     return ",".join(parts)
+
+
+def _fold(text: str) -> str:
+    """Lowercase, no accents, ``_``/``-``/spaces collapsed: ``Em_Análise`` → ``em analise``."""
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    return re.sub(r"[\s_-]+", " ", ascii_text.lower()).strip()
+
+
+def parse_choice(enum_cls, text: str):
+    """Find an enum member by its stored value or its Portuguese label, ignoring case,
+    accents and ``_``/``-``: ``"em-analise"``, ``"Em análise"`` and ``"analysis"`` all work."""
+    key = _fold(str(text))
+    for member in enum_cls:
+        if key in (_fold(member.value), _fold(member.label)):
+            return member
+    options = ", ".join(m.label for m in enum_cls)
+    raise ValidationError(f"Valor inválido: '{text}'. Use um destes: {options}.")
 
 
 def normalize_body(body: str) -> str:

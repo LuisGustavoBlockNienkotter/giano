@@ -78,9 +78,18 @@ giano nota "Ideia" --texto "corpo da anotação"         # cria sem abrir o edit
 giano export claude --projeto MERC [--desde 2026-01-01] [--todas]
 giano export html --projeto MERC [--rev 9] [--itens 1,3-5] [--sem-alteracoes]
 giano projetos | giano revisoes -p MERC | giano diff -p MERC 3 [9]
+giano itens -p MERC [--arquivados]
+giano item novo "Título" -p MERC [--tipo ajuste] [--prioridade alta] [-d 2] [--status aprovado] \n    [--tags "a, b"] [--corpo "texto" | --corpo - < corpo.md]
+giano item ver MERC-12
+giano item editar MERC-12 [--status concluido] [--prioridade baixa] [...]   # só o que for informado
+giano item arquivar MERC-12 | giano item restaurar MERC-12
 giano config [--pasta-exportacao PASTA]
 giano demo
 ```
+
+Os comandos `giano item` não abrem a interface, então servem para scripts e para o Claude
+registrar itens a partir de qualquer pasta. Tipo, prioridade e status aceitam o nome em
+português sem acento (`em-analise`, `critica`) ou o valor interno (`analysis`).
 
 ## Desenvolvimento
 
