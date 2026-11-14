@@ -47,6 +47,23 @@ Cada projeto tem a sua lista. Cada item tem:
 - Item arquivado é somente leitura: para editá-lo, restaure-o primeiro.
 - Na TUI, `v` alterna entre a lista e o arquivo; `z` arquiva (ou, no arquivo, restaura).
 
+### Adendos
+- Quando um item volta do desenvolvimento com problema ou ajustes, crio um **adendo** em vez
+  de reescrever o item: o texto original continua intacto.
+- O adendo mantém o número do original com um sub-número: `MERC-33.1`, `MERC-33.2`… Pedir
+  um adendo de um adendo cria o próximo adendo do original.
+- O adendo é um item próprio, gerido de forma independente: título, tipo, prioridade,
+  dificuldade, status, tags, corpo, revisões e arquivamento são dele. Posso concluir ou
+  arquivar o original e deixar só o adendo na lista.
+- Criar um adendo gera revisão ("MERC-33.1 criado (adendo de MERC-33): …"). Um item com
+  adendos (mesmo arquivados) não pode ser excluído.
+- Na exportação HTML posso escolher só o adendo (`--itens 33.1`); ele sai com a referência
+  ao original (código, título, status) e o texto do original recolhido. Se o original
+  também estiver no documento, os dois se ligam por links. Original arquivado aparece só
+  como referência, sem o texto.
+- Na TUI, `d` cria um adendo do item selecionado (começa como Ajuste, com prioridade,
+  dificuldade e tags do original); no editor, `ctrl+o` mostra o original.
+
 ### Revisões da lista (requisito central)
 - **Toda alteração na lista de um projeto gera uma nova revisão**: criar, editar,
   excluir ou mudar status, prioridade ou tags de qualquer item.

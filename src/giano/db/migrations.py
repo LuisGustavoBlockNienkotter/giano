@@ -117,9 +117,30 @@ ALTER TABLE item_versions
     ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1));
 """
 
+# Addenda: an addendum is an item of its own (own versions, status, revisions) that
+# keeps the number of the original item and adds a sub-number: MERC-33.1, MERC-33.2.
+# addendum = 0 is a normal item. SQLite cannot drop the old UNIQUE (project_id, number),
+# so the table is rebuilt (foreign keys are off while migrating; see migrate()).
+V3 = """
+CREATE TABLE items_new (
+    id             INTEGER PRIMARY KEY,
+    project_id     INTEGER NOT NULL REFERENCES projects(id),
+    number         INTEGER NOT NULL,
+    addendum       INTEGER NOT NULL DEFAULT 0 CHECK (addendum >= 0),
+    source_note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL,
+    created_at     TEXT    NOT NULL,
+    UNIQUE (project_id, number, addendum)
+);
+INSERT INTO items_new (id, project_id, number, addendum, source_note_id, created_at)
+    SELECT id, project_id, number, 0, source_note_id, created_at FROM items;
+DROP TABLE items;
+ALTER TABLE items_new RENAME TO items;
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, V1),
     (2, V2),
+    (3, V3),
 ]
 
 
@@ -130,20 +151,37 @@ def current_version(db: Database) -> int:
 
 
 def migrate(db: Database) -> int:
-    """Apply pending migrations. Returns the resulting schema version."""
+    """Apply pending migrations. Returns the resulting schema version.
+
+    Foreign keys are switched off while migrating (the pragma is a no-op inside a
+    transaction), so a script can rebuild a referenced table; each migration is
+    checked with ``PRAGMA foreign_key_check`` before it commits.
+    """
     version = current_version(db)
-    for target, script in MIGRATIONS:
-        if target <= version:
-            continue
-        # executescript commits implicitly; wrap the script itself in a transaction.
-        try:
-            db.conn.executescript(
-                f"BEGIN IMMEDIATE;\n{script}\n"
-                f"INSERT INTO schema_version (version) VALUES ({target});\nCOMMIT;"
-            )
-        except Exception:
-            if db.conn.in_transaction:
-                db.conn.execute("ROLLBACK")
-            raise
-        version = target
+    pending = [(t, s) for t, s in MIGRATIONS if t > version]
+    if not pending:
+        return version
+    fk_on = db.conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    db.conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        for target, script in pending:
+            # executescript commits a pending transaction first: open it in the script.
+            try:
+                db.conn.executescript(
+                    f"BEGIN IMMEDIATE;\n{script}\n"
+                    f"INSERT INTO schema_version (version) VALUES ({target});"
+                )
+                broken = db.conn.execute("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise RuntimeError(
+                        f"Migração {target}: chaves estrangeiras inválidas {[tuple(r) for r in broken[:5]]}"
+                    )
+                db.conn.execute("COMMIT")
+            except Exception:
+                if db.conn.in_transaction:
+                    db.conn.execute("ROLLBACK")
+                raise
+            version = target
+    finally:
+        db.conn.execute(f"PRAGMA foreign_keys = {'ON' if fk_on else 'OFF'}")
     return version

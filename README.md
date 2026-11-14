@@ -14,6 +14,8 @@ nova revisão, e qualquer revisão anterior pode ser consultada, comparada e exp
 - Exportação HTML autocontida, pronta para enviar ou imprimir
 - Busca textual (SQLite FTS5) em itens e anotações
 - Arquivo de itens: tire da lista e das exportações o que não quer mais ver, sem perder nada
+- Adendos (`MERC-33.1`): registre o retorno/ajuste de um item já feito sem mexer no texto
+  original, e gerencie (e exporte) o adendo à parte
 
 ## Instalação
 
@@ -47,6 +49,7 @@ ou `giano --db arquivo.db` para usar outro.
 | Tecla | Ação | Tecla | Ação |
 |---|---|---|---|
 | `n` | novo item | `r` | revisões (enter: ver; `d`: diferenças; `m`: marcar base) |
+| `d` | novo adendo do item selecionado | | |
 | `e` / enter | editar item | `l` | voltar à última revisão |
 | `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida (escolhendo os itens) |
 | `s` | mudar status | `c` | exportar para o Claude |
@@ -67,7 +70,17 @@ guardados com tudo o que tinham; `v` mostra o arquivo, onde `z` devolve o item �
 Arquivar e restaurar geram revisão, como qualquer alteração. Item arquivado é somente
 leitura até ser restaurado.
 
-No editor de item: `ctrl+s` salva, `ctrl+t` alterna editar/visualizar, `esc` cancela.
+**Adendos**: quando um item volta do desenvolvimento com problema ou ajuste a fazer, tecle
+`d` sobre ele para criar um adendo (`MERC-33` → `MERC-33.1`, depois `MERC-33.2`…). O adendo
+é um item próprio — tem título, corpo, status, prioridade e revisões independentes — e o
+texto do original fica intacto. Assim você pode concluir o `MERC-33` e deixar na lista só o
+`MERC-33.1`. Na exportação HTML dá para escolher só o adendo: ele sai com a referência ao
+original (título e status) e o texto original recolhido em "Ver o item original". O adendo
+começa como *Ajuste*, com a prioridade, a dificuldade e as tags do original. Um item com
+adendos não pode ser excluído (arquive-o, ou exclua os adendos antes).
+
+No editor de item: `ctrl+s` salva, `ctrl+t` alterna editar/visualizar, `esc` cancela; num
+adendo, `ctrl+o` mostra o item original.
 Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto selecionado).
 
 ## Linha de comando
@@ -76,11 +89,12 @@ Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto se
 giano nota "Reunião com o comercial" --projeto MERC   # abre o editor de anotação
 giano nota "Ideia" --texto "corpo da anotação"         # cria sem abrir o editor
 giano export claude --projeto MERC [--desde 2026-01-01] [--todas]
-giano export html --projeto MERC [--rev 9] [--itens 1,3-5] [--sem-alteracoes]
+giano export html --projeto MERC [--rev 9] [--itens 1,3-5,33.1] [--sem-alteracoes]
 giano projetos | giano revisoes -p MERC | giano diff -p MERC 3 [9]
 giano itens -p MERC [--arquivados]
 giano item novo "Título" -p MERC [--tipo ajuste] [--prioridade alta] [-d 2] [--status aprovado] \n    [--tags "a, b"] [--corpo "texto" | --corpo - < corpo.md]
 giano item ver MERC-12
+giano item adendo MERC-12 "Título do ajuste" [--corpo -] [...]   # cria MERC-12.1
 giano item editar MERC-12 [--status concluido] [--prioridade baixa] [...]   # só o que for informado
 giano item arquivar MERC-12 | giano item restaurar MERC-12
 giano config [--pasta-exportacao PASTA]

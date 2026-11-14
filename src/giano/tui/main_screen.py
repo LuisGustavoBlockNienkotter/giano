@@ -39,12 +39,12 @@ COLUMNS = [
 ]
 
 SORT_KEYS = {
-    "id": lambda v: v.number,
+    "id": lambda v: v.key,
     "title": lambda v: v.data.title.lower(),
     "type": lambda v: v.data.type.label,
-    "priority": lambda v: (v.data.priority.rank, v.number),
-    "difficulty": lambda v: (v.data.difficulty, v.number),
-    "status": lambda v: (v.data.status.rank, v.number),
+    "priority": lambda v: (v.data.priority.rank, v.key),
+    "difficulty": lambda v: (v.data.difficulty, v.key),
+    "status": lambda v: (v.data.status.rank, v.key),
     "tags": lambda v: ", ".join(v.data.tags),
 }
 
@@ -58,7 +58,8 @@ PRIORITY_STYLE = {
     "low": "dim",
 }
 
-EDIT_ACTIONS = {"new_item", "edit_item", "delete_item", "quick_status", "archive_item", "unarchive_item"}
+EDIT_ACTIONS = {"new_item", "new_addendum", "edit_item", "delete_item", "quick_status",
+                "archive_item", "unarchive_item"}
 # Actions that make no sense on an archived item (it is read-only until restored).
 NOT_IN_ARCHIVE = {"new_item", "edit_item", "quick_status", "archive_item", "export_html"}
 
@@ -66,6 +67,7 @@ NOT_IN_ARCHIVE = {"new_item", "edit_item", "quick_status", "archive_item", "expo
 class MainScreen(Screen):
     BINDINGS = [
         Binding("n", "new_item", "Novo"),
+        Binding("d", "new_addendum", "Adendo"),
         Binding("e", "edit_item", "Editar"),
         Binding("delete", "delete_item", "Excluir"),
         Binding("s", "quick_status", "Status"),
@@ -270,8 +272,11 @@ class MainScreen(Screen):
                       "# Bem-vindo ao Giano\n\nTecle **p** para criar o primeiro projeto, "
                       "ou rode `giano demo` para gerar dados de exemplo.")
             return
-        note = self.app.giano.notes.get(v.source_note_id) if v.source_note_id else None
-        md.update(item_preview(v, note))
+        g = self.app.giano
+        note = g.notes.get(v.source_note_id) if v.source_note_id else None
+        original = g.items.parent(v, self.view_rev) if v.is_addendum else None
+        addenda = [] if v.is_addendum else g.items.addenda(v, self.view_rev)
+        md.update(item_preview(v, note, original, addenda))
 
     # -- events ---------------------------------------------------------------
 
@@ -345,6 +350,25 @@ class MainScreen(Screen):
         if self._guard_not_archive() and self._guard_editable():
             self.app.push_screen(ItemEditorScreen(self.project), self._after_edit)
 
+    def action_new_addendum(self) -> None:
+        """Create an addendum of the selected item (MERC-33 → MERC-33.1): a follow-up
+        that is managed on its own, keeping the original untouched."""
+        v = self.selected_item()
+        if v is None or not self._guard_editable():
+            return
+        if v.is_addendum:
+            self.notify(f"O novo adendo será de {v.parent_code} (o item original).")
+        self.app.push_screen(ItemEditorScreen(self.project, addendum_of=v), self._after_addendum)
+
+    def _after_addendum(self, view: ItemView | None) -> None:
+        if view is None:
+            return
+        if self.show_archived:
+            self.show_archived = False  # the addendum goes to the normal list
+        if not self.current_filters.matches(view):
+            self.current_filters = Filters()
+        self.reload_items(select_item_id=view.item_id)
+
     def action_edit_item(self) -> None:
         v = self.selected_item()
         if v and self._guard_not_archive() and self._guard_editable():
@@ -361,7 +385,11 @@ class MainScreen(Screen):
 
         def answer(ok: bool | None) -> None:
             if ok:
-                rev = self.app.giano.items.delete(v.item_id)
+                try:
+                    rev = self.app.giano.items.delete(v.item_id)
+                except ValidationError as exc:
+                    self.notify(str(exc), severity="error")
+                    return
                 self.notify(f"{v.code} excluído (Rev. {rev}).")
                 self.reload_items()
 
@@ -499,7 +527,7 @@ class MainScreen(Screen):
         shown_rev = rev if rev is not None else self.latest_rev
         ordered = sorted(self.items, key=SORT_KEYS[self.sort_column], reverse=self.sort_reverse)
         filtered = (
-            {v.number for v in self.items if self.filters.matches(v)} if self.filters.active else None
+            {v.key for v in self.items if self.filters.matches(v)} if self.filters.active else None
         )
 
         def run(opts) -> None:

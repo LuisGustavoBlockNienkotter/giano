@@ -10,12 +10,14 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from giano.domain import (
+    ItemKey,
     ItemType,
     ItemView,
     NoteStatus,
     Project,
     ValidationError,
     display_value,
+    item_code,
 )
 from giano.services.items import ItemService
 from giano.services.markdown import demote_headings, pygments_css, to_html
@@ -34,7 +36,15 @@ class ExportResult:
 
 
 def sort_key(v: ItemView):
-    return (v.data.priority.rank, v.number)
+    return (v.data.priority.rank, v.key)
+
+
+def selection_keys(selection) -> frozenset[ItemKey] | None:
+    """Normalize an item selection: ints are normal items (``33`` = MERC-33),
+    ``(number, addendum)`` tuples pick addenda too (``(33, 1)`` = MERC-33.1)."""
+    if selection is None:
+        return None
+    return frozenset((n, 0) if isinstance(n, int) else (int(n[0]), int(n[1])) for n in selection)
 
 
 def format_date(iso: str) -> str:
@@ -117,8 +127,13 @@ class Exporter:
         ]
         if not items:
             out += ["_(lista vazia)_", ""]
+        by_key = {v.key: v for v in self.items.list_items(project.id, rev)}
         for v in items:
             out += [f"### {v.code} — {v.data.title}", item_meta_line(v)]
+            if v.is_addendum:
+                original = by_key.get((v.number, 0))
+                ref = f"{v.parent_code} — {original.data.title} ({original.data.status.label})"                     if original else f"{v.parent_code}"
+                out.append(f"Adendo de {ref}")
             if v.data.body:
                 out += ["", demote_headings(v.data.body, 3)]
             out.append("")
@@ -176,14 +191,17 @@ class Exporter:
         rev: int | None = None,
         changes: bool = True,
         compare_to: int | None = None,
-        numbers: set[int] | frozenset[int] | None = None,
+        numbers=None,
     ) -> tuple[str, int, str]:
         """Render the HTML document. Returns (html, revision, revision date ISO).
 
-        ``numbers`` limits the document to those items (e.g. {1, 3} = MERC-1 and MERC-3);
-        ``None`` means all items of the revision. Archived items never go into the
-        document (not even in the changes section).
+        ``numbers`` limits the document to those items (e.g. {1, 3} = MERC-1 and MERC-3;
+        ``(33, 1)`` = the addendum MERC-33.1, see :func:`selection_keys`); ``None`` means
+        all items of the revision. Archived items never go into the document (not even in
+        the changes section). An addendum always shows a reference to its original item,
+        with the original's text (collapsed) when the original is not archived.
         """
+        keys = selection_keys(numbers)
         latest = self.items.latest_revision(project.id)
         rev = latest if rev is None else rev
         if not 0 <= rev <= latest:
@@ -194,33 +212,44 @@ class Exporter:
         archived_ids = {v.item_id for v in everything if v.data.archived}
         items = [v for v in everything if not v.data.archived]
         total_in_rev = len(items)
-        if numbers is not None:
-            archived = sorted(v.number for v in everything if v.data.archived and v.number in numbers)
+        if keys is not None:
+            archived = sorted(v.key for v in everything if v.data.archived and v.key in keys)
             if archived:
-                codes = ", ".join(f"{project.code}-{n}" for n in archived)
+                codes = ", ".join(item_code(project.code, k) for k in archived)
                 raise ValidationError(f"Itens arquivados na Rev. {rev} não são exportados: {codes}.")
-            missing = sorted(set(numbers) - {v.number for v in items})
+            missing = sorted(set(keys) - {v.key for v in items})
             if missing:
-                codes = ", ".join(f"{project.code}-{n}" for n in missing)
+                codes = ", ".join(item_code(project.code, k) for k in missing)
                 raise ValidationError(f"Itens que não existem na Rev. {rev}: {codes}.")
-            items = [v for v in items if v.number in numbers]
+            items = [v for v in items if v.key in keys]
             if not items:
                 raise ValidationError("Selecione ao menos um item para exportar.")
         selected_ids = {v.item_id for v in items}
+        by_key = {v.key: v for v in everything}
+        in_doc = {v.key for v in items}
+
+        def entry(v: ItemView) -> dict:
+            e = {"v": v, "anchor": v.code.lower(), "body_html": to_html(v.data.body)}
+            if v.is_addendum:
+                original = by_key.get((v.number, 0))
+                e["original"] = original and {
+                    "v": original,
+                    "anchor": original.code.lower() if original.key in in_doc else None,
+                    "body_html": None if original.data.archived else to_html(original.data.body),
+                }
+                e["original_code"] = v.parent_code
+            else:
+                e["addenda"] = [
+                    {"v": a, "anchor": a.code.lower() if a.key in in_doc else None}
+                    for a in items if a.number == v.number and a.is_addendum
+                ]
+            return e
 
         groups = []
         for t in ItemType:
             members = sorted((v for v in items if v.data.type == t), key=sort_key)
             if members:
-                groups.append(
-                    {
-                        "type": t,
-                        "items": [
-                            {"v": v, "anchor": v.code.lower(), "body_html": to_html(v.data.body)}
-                            for v in members
-                        ],
-                    }
-                )
+                groups.append({"type": t, "items": [entry(v) for v in members]})
 
         diff = None
         if changes and rev > 0:
@@ -232,7 +261,7 @@ class Exporter:
             # Items archived at this revision are left out entirely.
             diff.removed = [v for v in diff.removed if v.item_id not in archived_ids]
             revs = [r for r in revs if r.item_id not in archived_ids]
-            if numbers is not None:
+            if keys is not None:
                 # Only the selected items: nothing about the others goes into the file.
                 diff.added = [v for v in diff.added if v.item_id in selected_ids]
                 diff.changed = [c for c in diff.changed if c.new.item_id in selected_ids]
@@ -268,7 +297,7 @@ class Exporter:
         out_dir: Path | None = None,
         changes: bool = True,
         compare_to: int | None = None,
-        numbers: set[int] | frozenset[int] | None = None,
+        numbers=None,
     ) -> ExportResult:
         project = self.projects.require(project_code)
         html, rev, rev_date = self.html(project, rev, changes, compare_to, numbers)

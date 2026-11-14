@@ -42,7 +42,7 @@ src/giano/
                      notes.py (NoteEditor autosave, QuickNoteScreen), revisions.py,
                      search.py, projects.py, dialogs.py, widgets.py, giano.tcss
   cli.py             Typer app (entry point `giano`); no subcommand = TUI; `giano item ...`
-                     / `giano itens` = non-interactive item commands (used by a user-level
+                     / `giano itens` = non-interactive item commands (incl. `item adendo`) (used by a user-level
                      `giano` skill in ~/.claude/skills so Claude can file items from any folder)
 tests/               pytest; test_tui.py drives the app with Textual's pilot
 ```
@@ -61,6 +61,12 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot
   `ItemService.archive/unarchive`; `update()` refuses archived items and never changes the
   flag. `list_items(archived=False)` is the normal list; exports (HTML, Claude) never
   include archived items (HTML diff uses `include_archived=False`).
+- Addenda: an addendum is an `items` row with the original's `number` and `addendum > 0`
+  (code `MERC-33.1`; `addendum = 0` is a normal item; `ItemView.key = (number, addendum)`).
+  It has its own versions/status/archive and is created by `ItemService.create_addendum`
+  (an addendum of an addendum attaches to the original). Deleting an item that has addenda
+  is refused. Item selections (HTML export, `--itens 1,3-5,33.1`) use keys, see
+  `domain.parse_item_keys` and `exports.selection_keys`.
 - Notes are not versioned. `item_fts` (rowid = version id) is written by the repository;
   `note_fts` is maintained by triggers. Search joins `rev_end IS NULL`.
 
@@ -75,4 +81,6 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot
   in the stack that defines it; new screens that show DB data should implement it. Editors
   never drop unsaved input (item editor confirms before overwriting an external change).
 - Services take a `clock` callable so tests are deterministic (`tests/conftest.py::FakeClock`).
-- Schema changes: add `(N, sql)` to `MIGRATIONS`; add a test.
+- Schema changes: add `(N, sql)` to `MIGRATIONS`; add a test. Migrations run with foreign
+  keys off and are checked with `PRAGMA foreign_key_check` before commit, so a script may
+  rebuild a table (V3 rebuilt `items`).

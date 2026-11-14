@@ -162,6 +162,43 @@ def format_ranges(values) -> str:
     return ",".join(parts)
 
 
+ItemKey = tuple[int, int]  # (number, addendum): 33 → (33, 0), 33.1 → (33, 1)
+
+
+def item_code(project_code: str, key: ItemKey) -> str:
+    number, addendum = key
+    return f"{project_code}-{number}.{addendum}" if addendum else f"{project_code}-{number}"
+
+
+def format_item_key(key: ItemKey) -> str:
+    number, addendum = key
+    return f"{number}.{addendum}" if addendum else str(number)
+
+
+_ITEM_REF_RE = re.compile(r"^(\d+)\.(\d+)$")
+
+
+def parse_item_keys(text: str) -> frozenset[ItemKey]:
+    """Parse an item selection: ``"1,3-5,33.1"`` → ``{(1,0), (3,0), (4,0), (5,0), (33,1)}``.
+
+    Ranges select normal items only; an addendum is written ``NÚMERO.ADENDO``.
+    """
+    keys: set[ItemKey] = set()
+    plain_parts: list[str] = []
+    for part in text.replace(";", ",").split(","):
+        m = _ITEM_REF_RE.match(part.strip())
+        if m:
+            number, addendum = int(m.group(1)), int(m.group(2))
+            if number < 1 or addendum < 1:
+                raise ValidationError(f"Item inválido: '{part.strip()}'. Use ex.: 33 ou 33.1.")
+            keys.add((number, addendum))
+        else:
+            plain_parts.append(part)
+    if any(p.strip() for p in plain_parts) or not keys:
+        keys.update((n, 0) for n in parse_ranges(",".join(plain_parts), lo=1))
+    return frozenset(keys)
+
+
 def _fold(text: str) -> str:
     """Lowercase, no accents, ``_``/``-``/spaces collapsed: ``Em_Análise`` → ``em analise``."""
     ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
@@ -253,10 +290,27 @@ class ItemView:
     rev_end: int | None
     data: ItemData
     source_note_id: int | None = None
+    # 0 = a normal item; N > 0 = the N-th addendum of item ``number`` (MERC-33.1).
+    addendum: int = 0
+
+    @property
+    def key(self) -> ItemKey:
+        """``(number, addendum)``: identifies the item in its project and sorts addenda
+        right after their original item."""
+        return (self.number, self.addendum)
 
     @property
     def code(self) -> str:
-        return f"{self.project_code}-{self.number}"
+        return item_code(self.project_code, self.key)
+
+    @property
+    def is_addendum(self) -> bool:
+        return self.addendum > 0
+
+    @property
+    def parent_code(self) -> str | None:
+        """Code of the original item of an addendum (``MERC-33`` for ``MERC-33.1``)."""
+        return f"{self.project_code}-{self.number}" if self.addendum else None
 
 
 @dataclass(frozen=True)

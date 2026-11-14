@@ -89,6 +89,17 @@ def create_demo(g: Giano) -> list[str]:
     )
     g.items.delete(loja_items[6].item_id)
     g.items.set_status(loja_items[1].item_id, ItemStatus.DONE)
+    # The freight item came back from testing with an adjustment: an addendum (LOJA-2.1)
+    # keeps the original text intact and is managed on its own.
+    g.items.create_addendum(
+        loja_items[1].item_id,
+        ItemData("Frete por volume: tubos com cubagem errada", A, HIGH, 2, ItemStatus.OPEN,
+                 ("frete",),
+                 "Na homologação, tubos de 6 m saíram com frete menor que o esperado: "
+                 "a cubagem usa o comprimento em **cm** e o cadastro está em **m**.\n\n"
+                 "- Converter as medidas antes de `peso_cubado`\n"
+                 "- Testar com tubo de 6 m e telha colonial"),
+    )
     # An old decision, discarded and archived: out of the list, still kept.
     g.items.set_status(loja_items[3].item_id, ItemStatus.DISCARDED)
     g.items.archive(loja_items[3].item_id)

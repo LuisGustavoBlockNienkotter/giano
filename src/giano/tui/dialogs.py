@@ -329,7 +329,7 @@ class SettingsScreen(ModalScreen[None]):
 
 @dataclass(frozen=True)
 class HtmlExportOptions:
-    numbers: frozenset[int] | None  # None = every item of the revision
+    numbers: frozenset[tuple[int, int]] | None  # item keys (number, addendum); None = all
     changes: bool
 
 
@@ -344,8 +344,8 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
     ]
 
     def __init__(self, title: str, items: list, filtered: set[int] | None = None):
-        """``items``: ItemViews in display order; ``filtered``: numbers visible under the
-        current filter (offers the "só os filtrados" shortcut), or None."""
+        """``items``: ItemViews in display order; ``filtered``: keys (``ItemView.key``)
+        visible under the current filter (offers the "só os filtrados" shortcut), or None."""
         super().__init__()
         self.title_text = title
         self.items = items
@@ -357,7 +357,7 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
             yield Static("espaço/clique marca e desmarca · ctrl+t todos · ctrl+u nenhum · "
                          "ctrl+s exportar", classes="hint")
             yield SelectionList(
-                *[(plain(f"{v.code:<9} {v.data.title}  ·  {v.data.status.label}"), v.number, True)
+                *[(plain(f"{v.code:<11} {v.data.title}  ·  {v.data.status.label}"), v.key, True)
                   for v in self.items],
                 id="export-items",
             )
@@ -394,8 +394,8 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
         elif bid == "filtered":
             sl = self.query_one(SelectionList)
             sl.deselect_all()
-            for n in self.filtered or ():
-                sl.select(n)
+            for key in self.filtered or ():
+                sl.select(key)
         else:
             self.dismiss(None)
 
@@ -410,10 +410,10 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
         if not selected:
             self.notify("Selecione ao menos um item.", severity="warning")
             return
-        all_numbers = {v.number for v in self.items}
+        all_keys = {v.key for v in self.items}
         self.dismiss(
             HtmlExportOptions(
-                None if selected == all_numbers else selected,
+                None if selected == all_keys else selected,
                 self.query_one("#export-changes", Checkbox).value,
             )
         )

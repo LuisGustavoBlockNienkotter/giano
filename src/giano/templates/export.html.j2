@@ -46,6 +46,15 @@ article.item h3 .code { font-family: ui-monospace, Consolas, monospace; color: v
 .label.s-in_progress { color: #8250df; border-color: #8250df; background: #f6f0ff; }
 .label.s-approved { color: #0969da; border-color: #0969da; background: #eef6ff; }
 .label.tag { background: #fff; color: var(--muted); }
+.label.addendum { color: #9a3412; border-color: #ea580c; background: #fff7ed; }
+.muted { color: var(--muted); }
+.addendum-of { font-size: 14px; margin: -2px 0 10px; padding: 8px 10px; border-left: 3px solid #ea580c;
+  background: #fffaf5; border-radius: 0 6px 6px 0; }
+.addendum-of details.original { margin-top: 6px; }
+.addendum-of details.original summary { cursor: pointer; color: var(--accent); }
+.addendum-of details.original .body { margin-top: 8px; padding: 8px 10px; background: #fff;
+  border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+p.addenda { font-size: 14px; margin: 4px 0 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
 .body { overflow-wrap: anywhere; }
 .body :first-child { margin-top: 0; }
 .body h1, .body h2, .body h3, .body h4 { font-size: 15px; border: 0; margin: 14px 0 6px; padding: 0; }
@@ -74,6 +83,9 @@ footer.doc { margin-top: 48px; color: var(--muted); font-size: 12px; border-top:
   h2 { break-after: avoid; page-break-after: avoid; }
   pre.highlight { white-space: pre-wrap; }
   .label { border-color: #888 !important; }
+  /* Print the original item's text even when collapsed (browsers that support it). */
+  details.original::details-content { content-visibility: visible; display: block; }
+  details.original summary { color: inherit; }
 }
 </style>
 </head>
@@ -115,6 +127,20 @@ footer.doc { margin-top: 48px; color: var(--muted); font-size: 12px; border-top:
   {% set d = it.v.data %}
   <article class="item" id="{{ it.anchor }}">
     <h3><span class="code">{{ it.v.code }}</span>{{ d.title }}</h3>
+    {% if it.v.is_addendum %}
+    {% set o = it.original %}
+    <div class="addendum-of">
+      <span class="label addendum">Adendo</span>
+      de {% if o and o.anchor %}<a href="#{{ o.anchor }}">{{ it.original_code }}</a>{% else %}<strong>{{ it.original_code }}</strong>{% endif %}
+      {% if o %} — {{ o.v.data.title }} <span class="muted">({{ o.v.data.status.label }}{% if o.v.data.archived %}, arquivado{% endif %})</span>{% endif %}
+      {% if o and o.body_html and not o.anchor %}
+      <details class="original">
+        <summary>Ver o item original ({{ it.original_code }})</summary>
+        <div class="body">{{ o.body_html | safe }}</div>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
     <div class="labels">
       <span class="label p-{{ d.priority.value }}">Prioridade: {{ d.priority.label }}</span>
       <span class="label">Dificuldade: {{ d.difficulty }}/5</span>
@@ -124,6 +150,11 @@ footer.doc { margin-top: 48px; color: var(--muted); font-size: 12px; border-top:
     <div class="body">
       {% if d.body %}{{ it.body_html | safe }}{% else %}<p class="empty">Sem descrição.</p>{% endif %}
     </div>
+    {% if it.addenda %}
+    <p class="addenda">Adendos:
+      {% for a in it.addenda %}<a href="#{{ a.anchor }}">{{ a.v.code }}</a> {{ a.v.data.title }} <span class="muted">({{ a.v.data.status.label }})</span>{% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+    {% endif %}
   </article>
   {% endfor %}
 </section>

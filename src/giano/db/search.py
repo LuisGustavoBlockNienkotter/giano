@@ -22,7 +22,9 @@ def search_items(db: Database, text: str, project_id: int | None = None, limit: 
     if q is None:
         return []
     sql = """
-        SELECT i.id AS item_id, p.code || '-' || i.number AS code, p.id AS project_id,
+        SELECT i.id AS item_id, p.id AS project_id,
+               p.code || '-' || i.number
+                   || CASE WHEN i.addendum > 0 THEN '.' || i.addendum ELSE '' END AS code,
                v.title, v.status, v.archived,
                snippet(item_fts, -1, '[', ']', '…', 12) AS snippet
         FROM item_fts

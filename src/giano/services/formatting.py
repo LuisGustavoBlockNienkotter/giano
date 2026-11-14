@@ -6,7 +6,13 @@ from giano.domain import ItemView, Note, RevisionDiff, display_value
 from giano.services.markdown import demote_headings
 
 
-def item_preview(v: ItemView, source_note: Note | None = None) -> str:
+def item_preview(
+    v: ItemView,
+    source_note: Note | None = None,
+    original: ItemView | None = None,
+    addenda: list[ItemView] | tuple = (),
+) -> str:
+    """``original``: the original item of an addendum; ``addenda``: the addenda of an item."""
     d = v.data
     tags = " ".join(f"`#{t}`" for t in d.tags) or "—"
     lines = [
@@ -17,6 +23,18 @@ def item_preview(v: ItemView, source_note: Note | None = None) -> str:
         "",
         f"Tags: {tags}",
     ]
+    if v.is_addendum:
+        ref = f"**{v.parent_code}**"
+        if original is not None:
+            state = original.data.status.label + (", arquivado" if original.data.archived else "")
+            ref += f" — {original.data.title} ({state})"
+        lines += ["", f"> **Adendo** de {ref}"]
+    if addenda:
+        lines += ["", "Adendos: " + " · ".join(
+            f"**{a.code}** {a.data.title} ({a.data.status.label}"
+            + (", arquivado)" if a.data.archived else ")")
+            for a in addenda
+        )]
     if d.archived:
         lines += ["", "> **Arquivado** — fora da lista normal e das exportações."]
     if source_note:

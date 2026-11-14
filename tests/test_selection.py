@@ -153,9 +153,9 @@ def test_tui_html_export_selection(g, project, five, tmp_path):
             dialog = app.screen
             assert isinstance(dialog, HtmlExportDialog)
             sl = dialog.query_one(SelectionList)
-            assert sorted(sl.selected) == [1, 2, 3, 4, 5]  # all selected by default
-            sl.deselect(3)
-            sl.deselect(5)
+            assert sorted(sl.selected) == [(n, 0) for n in range(1, 6)]  # all selected by default
+            sl.deselect((3, 0))
+            sl.deselect((5, 0))
             await pilot.pause()
             assert "3 de 5" in str(dialog.query_one("#export-count").render())
             await pilot.press("ctrl+s")
@@ -181,10 +181,10 @@ def test_tui_html_export_only_filtered_button(g, project, five, tmp_path):
             await pilot.press("x")
             await pilot.pause()
             dialog = app.screen
-            assert sorted(dialog.query_one(SelectionList).selected) == [1, 2, 3, 4, 5]
+            assert sorted(dialog.query_one(SelectionList).selected) == [(n, 0) for n in range(1, 6)]
             await pilot.click("#filtered")
             await pilot.pause()
-            assert sorted(dialog.query_one(SelectionList).selected) == [2, 3]
+            assert sorted(dialog.query_one(SelectionList).selected) == [(2, 0), (3, 0)]
             await pilot.press("ctrl+u")
             await pilot.pause()
             await pilot.press("ctrl+s")  # nothing selected: refuses

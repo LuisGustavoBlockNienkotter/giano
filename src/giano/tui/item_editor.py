@@ -10,7 +10,8 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import ContentSwitcher, Footer, Input, Label, Markdown, Select, Static, TextArea
 
-from giano.domain import ItemData, ItemView, Project, ValidationError, compare_items
+from giano.domain import ItemData, ItemType, ItemView, Project, ValidationError, compare_items
+from giano.services.formatting import item_preview
 from giano.tui.dialogs import ConfirmDialog
 from giano.tui.widgets import (
     TagSuggester,
@@ -38,19 +39,58 @@ class ItemEditorScreen(Screen[ItemView | None]):
     BINDINGS = [
         Binding("ctrl+s", "save", "Salvar", priority=True),
         Binding("ctrl+t", "toggle_preview", "Editar/visualizar", priority=True),
+        Binding("ctrl+o", "show_original", "Ver original", priority=True),
         Binding("escape", "cancel", "Cancelar"),
     ]
 
-    def __init__(self, project: Project, item: ItemView | None = None, draft: ItemDraft | None = None):
+    def __init__(
+        self,
+        project: Project,
+        item: ItemView | None = None,
+        draft: ItemDraft | None = None,
+        addendum_of: ItemView | None = None,
+    ):
+        """``addendum_of``: create an addendum of this item instead of a new item."""
         super().__init__()
         self.project = project
         self.item = item
         self.draft = draft or ItemDraft()
+        self.addendum_of = addendum_of
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "show_original":
+            return self.addendum_of is not None or (self.item is not None and self.item.is_addendum)
+        return True
+
+    def _original(self) -> ItemView | None:
+        """The original item when creating or editing an addendum (latest revision)."""
+        items = self.app.giano.items
+        if self.addendum_of is not None:
+            base = items.get(self.addendum_of.item_id) or self.addendum_of
+            return items.parent(base) if base.is_addendum else base
+        if self.item is not None and self.item.is_addendum:
+            return items.parent(self.item)
+        return None
 
     def compose(self) -> ComposeResult:
-        d = self.item.data if self.item else ItemData(title=self.draft.title, body=self.draft.body)
+        if self.item:
+            d = self.item.data
+        elif self.addendum_of:
+            # An addendum is usually an adjustment of the original: start from its
+            # priority, difficulty and tags; the text is new.
+            o = self.addendum_of.data
+            d = ItemData(title=self.draft.title, body=self.draft.body, type=ItemType.ADJUSTMENT,
+                         priority=o.priority, difficulty=o.difficulty, tags=o.tags)
+        else:
+            d = ItemData(title=self.draft.title, body=self.draft.body)
         if self.item:
             heading = f"Editar {self.item.code} — {self.project.name}"
+            if self.item.is_addendum:
+                heading += f"  (adendo de {self.item.parent_code}; ctrl+o mostra o original)"
+        elif self.addendum_of:
+            root = self.addendum_of.parent_code or self.addendum_of.code
+            heading = (f"Novo adendo de {root} — {self.addendum_of.data.title}"
+                       "  (ctrl+o mostra o original)")
         else:
             heading = f"Novo item — {self.project.code} · {self.project.name}"
             if self.draft.source_label:
@@ -115,6 +155,19 @@ class ItemEditorScreen(Screen[ItemView | None]):
             switcher.current = "body"
             self.query_one("#body", TextArea).focus()
 
+    async def action_show_original(self) -> None:
+        original = self._original()
+        if original is None:
+            self.notify("Este item não é um adendo.", severity="warning")
+            return
+        note = self.app.giano.notes.get(original.source_note_id) if original.source_note_id else None
+        await self.query_one("#body-markdown", Markdown).update(
+            "> **Item original** (somente leitura) — ctrl+t volta ao texto do adendo\n\n"
+            + item_preview(original, note)
+        )
+        self.query_one(ContentSwitcher).current = "body-preview"
+        self.query_one("#body-preview").focus()
+
     async def _render_preview(self) -> None:
         await self.query_one("#body-markdown", Markdown).update(
             self.query_one("#body", TextArea).text or "_Sem descrição._"
@@ -177,7 +230,12 @@ class ItemEditorScreen(Screen[ItemView | None]):
                 return
         try:
             data = self._read()
-            if self.item is None:
+            if self.item is None and self.addendum_of is not None:
+                view = items.create_addendum(
+                    self.addendum_of.item_id, data, source_note_id=self.draft.source_note_id
+                )
+                self.notify(f"{view.code} criado (adendo de {view.parent_code}).")
+            elif self.item is None:
                 view = items.create(self.project.id, data, source_note_id=self.draft.source_note_id)
                 self.notify(f"{view.code} criado.")
             else:

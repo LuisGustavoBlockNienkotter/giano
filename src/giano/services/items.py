@@ -14,6 +14,13 @@ keep everything they had, but they are read-only until restored and stay out of
 the normal list and of the exports.
 
 Saving without a real change does not create a revision.
+
+Addenda: an addendum (``MERC-33.1``) is an item of its own, created from an
+existing item to record a follow-up (a fix or an adjustment that came back from
+development) without touching the original. It keeps the original's number,
+has its own content, status, revisions and archive state, and is managed
+independently: the original can be finished or archived while the addendum stays
+on the list. The original cannot be deleted while it has addenda.
 """
 
 from __future__ import annotations
@@ -93,14 +100,29 @@ class ItemService:
         return repo.get_at_revision(self.db, item_id, rev)
 
     def get_by_code(self, code: str) -> ItemView | None:
-        """Find a current item by its identifier, e.g. ``MERC-12``."""
-        prefix, _, number = code.strip().rpartition("-")
-        if not prefix or not number.isdigit():
+        """Find a current item by its identifier, e.g. ``MERC-12`` or ``MERC-12.1``."""
+        prefix, _, ref = code.strip().rpartition("-")
+        number, _, addendum = ref.partition(".")
+        if not prefix or not number.isdigit() or (addendum and not addendum.isdigit()):
             return None
         project = projects_repo.get_by_code(self.db, prefix)
         if project is None:
             return None
-        return repo.get_current_by_number(self.db, project.id, int(number))
+        return repo.get_current_by_number(self.db, project.id, int(number), int(addendum or 0))
+
+    def parent(self, view: ItemView, rev: int | None = None) -> ItemView | None:
+        """The original item of an addendum, at revision ``rev`` (default: latest)."""
+        if not view.is_addendum:
+            return None
+        if rev is None:
+            return repo.get_current_by_number(self.db, view.project_id, view.number)
+        return repo.get_by_number_at_revision(self.db, view.project_id, view.number, 0, rev)
+
+    def addenda(self, view: ItemView, rev: int | None = None) -> list[ItemView]:
+        """The addenda of an item (archived ones included), at revision ``rev``."""
+        if rev is None:
+            rev = self.latest_revision(view.project_id)
+        return repo.addenda_at_revision(self.db, view.project_id, view.number, rev)
 
     def history(self, item_id: int) -> list[ItemView]:
         return repo.item_history(self.db, item_id)
@@ -124,6 +146,39 @@ class ItemService:
             rev = self._new_revision(project_id, f"{code} criado: {data.title}", item_id)
             repo.insert_version(self.db, item_id, rev, data)
             return repo.get_current(self.db, item_id)  # type: ignore[return-value]
+
+    def create_addendum(
+        self, item_id: int, data: ItemData, source_note_id: int | None = None
+    ) -> ItemView:
+        """Create an addendum of an item (``MERC-33`` → ``MERC-33.1``), one new revision.
+
+        Asking for an addendum of an addendum attaches it to the same original item
+        (``MERC-33.1`` → ``MERC-33.2``).
+        """
+        data = data.normalized()
+        with self.db.transaction():
+            base = repo.get_current(self.db, item_id)
+            if base is None:
+                raise ValidationError("Item não encontrado ou excluído.")
+            project = self._project(base.project_id)
+            if not project.active:
+                raise ValidationError("Projeto arquivado: não é possível criar adendos.")
+            original = (
+                repo.get_current_by_number(self.db, base.project_id, base.number)
+                if base.is_addendum else base
+            )
+            if original is None:
+                raise ValidationError(f"O item original {base.parent_code} foi excluído.")
+            addendum = repo.next_addendum_number(self.db, base.project_id, base.number)
+            new_id = repo.insert_item(
+                self.db, base.project_id, base.number, source_note_id, self._now(), addendum
+            )
+            code = f"{original.code}.{addendum}"
+            rev = self._new_revision(
+                base.project_id, f"{code} criado (adendo de {original.code}): {data.title}", new_id
+            )
+            repo.insert_version(self.db, new_id, rev, data)
+            return repo.get_current(self.db, new_id)  # type: ignore[return-value]
 
     def update(self, item_id: int, data: ItemData) -> ItemView | None:
         """Save new content. Returns the new view, or ``None`` if nothing changed."""
@@ -187,6 +242,17 @@ class ItemService:
             current = repo.get_current(self.db, item_id)
             if current is None:
                 raise ValidationError("Item não encontrado ou já excluído.")
+            if not current.is_addendum:
+                rev_now = repo.latest_revision_number(self.db, current.project_id)
+                addenda = repo.addenda_at_revision(
+                    self.db, current.project_id, current.number, rev_now
+                )
+                if addenda:
+                    codes = ", ".join(a.code for a in addenda)
+                    raise ValidationError(
+                        f"{current.code} tem adendos ({codes}): exclua-os antes, "
+                        "ou arquive o item em vez de excluir."
+                    )
             rev = self._new_revision(
                 current.project_id, f"{current.code} excluído: {current.data.title}", item_id
             )
@@ -228,6 +294,6 @@ class ItemService:
                     result.changed.append(ItemChange(old, view, changes))
         result.removed = [v for item_id, v in before.items() if item_id not in after]
         for lst in (result.added, result.removed):
-            lst.sort(key=lambda v: v.number)
-        result.changed.sort(key=lambda c: c.new.number)
+            lst.sort(key=lambda v: v.key)
+        result.changed.sort(key=lambda c: c.new.key)
         return result

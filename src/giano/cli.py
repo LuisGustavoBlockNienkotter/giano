@@ -23,7 +23,7 @@ from giano.domain import (
     Priority,
     ValidationError,
     parse_choice,
-    parse_ranges,
+    parse_item_keys,
 )
 from giano.services import Giano
 from giano.services import clipboard
@@ -154,13 +154,16 @@ def export_html(
     ] = None,
     itens: Annotated[
         Optional[str],
-        typer.Option("--itens", "-i", help="Números dos itens a incluir, ex.: 1,3-5 (padrão: todos)."),
+        typer.Option(
+            "--itens", "-i",
+            help="Itens a incluir, ex.: 1,3-5 ou 33.1 para um adendo (padrão: todos).",
+        ),
     ] = None,
 ) -> None:
     """Gera um HTML autocontido da lista de um projeto numa revisão."""
     g = _giano(ctx)
     try:
-        numbers = parse_ranges(itens, lo=1) if itens else None
+        numbers = parse_item_keys(itens) if itens else None
         result = g.exports.export_html(projeto, rev, saida, alteracoes, comparar_com, numbers)
     except ValidationError as exc:
         _fail(str(exc))
@@ -274,15 +277,18 @@ def _read_body(value: str | None) -> str | None:
 def _item(g: Giano, code: str) -> ItemView:
     view = g.items.get_by_code(code)
     if view is None:
-        raise ValidationError(f"Item não encontrado: {code} (use SIGLA-NÚMERO, ex.: MERC-12).")
+        raise ValidationError(
+            f"Item não encontrado: {code} (use SIGLA-NÚMERO, ex.: MERC-12, ou MERC-12.1 para um adendo)."
+        )
     return view
 
 
 def _item_line(v: ItemView) -> str:
     d = v.data
     tags = ", ".join(d.tags) or "—"
+    of = f" · adendo de {v.parent_code}" if v.is_addendum else ""
     return (f"{v.code} · {d.title} · {d.type.label} · {d.priority.label} · "
-            f"dif. {d.difficulty}/5 · {d.status.label} · tags: {tags}")
+            f"dif. {d.difficulty}/5 · {d.status.label} · tags: {tags}{of}")
 
 
 @app.command()
@@ -353,7 +359,51 @@ def item_ver(
         _fail(str(exc))
         return
     note = g.notes.get(v.source_note_id) if v.source_note_id else None
-    console.print(item_preview(v, note), markup=False, highlight=False, soft_wrap=True)
+    original = g.items.parent(v) if v.is_addendum else None
+    addenda = [] if v.is_addendum else g.items.addenda(v)
+    console.print(item_preview(v, note, original, addenda), markup=False, highlight=False,
+                  soft_wrap=True)
+
+
+@item_app.command("adendo")
+def item_adendo(
+    ctx: typer.Context,
+    codigo: Annotated[str, typer.Argument(help="Item original, ex.: MERC-33.")],
+    titulo: Annotated[str, typer.Argument(help="Título do adendo.")],
+    tipo: Annotated[str, typer.Option("--tipo", "-t", help=TIPO_HELP)] = "ajuste",
+    prioridade: Annotated[
+        Optional[str], typer.Option("--prioridade", help=PRIORIDADE_HELP + " Padrão: a do original.")
+    ] = None,
+    dificuldade: Annotated[
+        Optional[int], typer.Option("--dificuldade", "-d", help="1 a 5. Padrão: a do original.")
+    ] = None,
+    status: Annotated[str, typer.Option("--status", "-s", help=STATUS_HELP)] = "aberto",
+    tags: Annotated[
+        Optional[str], typer.Option("--tags", help="Tags separadas por vírgula. Padrão: as do original.")
+    ] = None,
+    corpo: Annotated[Optional[str], typer.Option("--corpo", "-c", help=CORPO_HELP)] = None,
+) -> None:
+    """Cria um adendo de um item (MERC-33 → MERC-33.1): um ajuste/retorno que é gerido
+    à parte, sem mexer no texto do original (gera uma nova revisão)."""
+    g = _giano(ctx)
+    try:
+        original = _item(g, codigo)
+        o = original.data
+        data = ItemData(
+            title=titulo,
+            type=parse_choice(ItemType, tipo),
+            priority=parse_choice(Priority, prioridade) if prioridade is not None else o.priority,
+            difficulty=dificuldade if dificuldade is not None else o.difficulty,
+            status=parse_choice(ItemStatus, status),
+            tags=tags if tags is not None else o.tags,
+            body=_read_body(corpo) or "",
+        )
+        v = g.items.create_addendum(original.item_id, data)
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    console.print(f"{v.code} criado (Rev. {v.rev_start}), adendo de {v.parent_code}: {v.data.title}",
+                  markup=False, highlight=False)
 
 
 @item_app.command("editar")

@@ -58,12 +58,25 @@ def next_item_number(db: Database, project_id: int) -> int:
     return int(r[0] or 0) + 1
 
 
+def next_addendum_number(db: Database, project_id: int, number: int) -> int:
+    r = db.query_one(
+        "SELECT MAX(addendum) FROM items WHERE project_id = ? AND number = ?", (project_id, number)
+    )
+    return int(r[0] or 0) + 1
+
+
 def insert_item(
-    db: Database, project_id: int, number: int, source_note_id: int | None, now: str
+    db: Database,
+    project_id: int,
+    number: int,
+    source_note_id: int | None,
+    now: str,
+    addendum: int = 0,
 ) -> int:
     cur = db.execute(
-        "INSERT INTO items (project_id, number, source_note_id, created_at) VALUES (?, ?, ?, ?)",
-        (project_id, number, source_note_id, now),
+        """INSERT INTO items (project_id, number, addendum, source_note_id, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (project_id, number, addendum, source_note_id, now),
     )
     return int(cur.lastrowid)
 
@@ -116,7 +129,8 @@ def close_version(db: Database, version_id: int, rev_end: int) -> None:
 
 
 _SELECT = """
-SELECT i.id AS item_id, i.project_id, p.code AS project_code, i.number, i.source_note_id,
+SELECT i.id AS item_id, i.project_id, p.code AS project_code, i.number, i.addendum,
+       i.source_note_id,
        v.id AS version_id, v.rev_start, v.rev_end, v.title, v.type, v.priority,
        v.difficulty, v.status, v.body, v.archived,
        (SELECT group_concat(name, char(31)) FROM (
@@ -141,6 +155,7 @@ def _view(r: sqlite3.Row) -> ItemView:
         rev_start=r["rev_start"],
         rev_end=r["rev_end"],
         source_note_id=r["source_note_id"],
+        addendum=r["addendum"],
         data=ItemData(
             title=r["title"],
             type=ItemType(r["type"]),
@@ -156,7 +171,7 @@ def _view(r: sqlite3.Row) -> ItemView:
 
 def list_at_revision(db: Database, project_id: int, rev: int) -> list[ItemView]:
     rows = db.query(
-        _SELECT + f" WHERE i.project_id = :project AND {_AT_REVISION} ORDER BY i.number",
+        _SELECT + f" WHERE i.project_id = :project AND {_AT_REVISION} ORDER BY i.number, i.addendum",
         {"project": project_id, "rev": rev},
     )
     return [_view(r) for r in rows]
@@ -174,12 +189,38 @@ def get_at_revision(db: Database, item_id: int, rev: int) -> ItemView | None:
     return _view(r) if r else None
 
 
-def get_current_by_number(db: Database, project_id: int, number: int) -> ItemView | None:
+def get_current_by_number(
+    db: Database, project_id: int, number: int, addendum: int = 0
+) -> ItemView | None:
     r = db.query_one(
-        _SELECT + " WHERE i.project_id = ? AND i.number = ? AND v.rev_end IS NULL",
-        (project_id, number),
+        _SELECT
+        + " WHERE i.project_id = ? AND i.number = ? AND i.addendum = ? AND v.rev_end IS NULL",
+        (project_id, number, addendum),
     )
     return _view(r) if r else None
+
+
+def get_by_number_at_revision(
+    db: Database, project_id: int, number: int, addendum: int, rev: int
+) -> ItemView | None:
+    r = db.query_one(
+        _SELECT
+        + f""" WHERE i.project_id = :project AND i.number = :number AND i.addendum = :addendum
+               AND {_AT_REVISION}""",
+        {"project": project_id, "number": number, "addendum": addendum, "rev": rev},
+    )
+    return _view(r) if r else None
+
+
+def addenda_at_revision(db: Database, project_id: int, number: int, rev: int) -> list[ItemView]:
+    """The addenda of item ``number`` (``number.1``, ``number.2``…) at revision ``rev``."""
+    rows = db.query(
+        _SELECT
+        + f""" WHERE i.project_id = :project AND i.number = :number AND i.addendum > 0
+               AND {_AT_REVISION} ORDER BY i.addendum""",
+        {"project": project_id, "number": number, "rev": rev},
+    )
+    return [_view(r) for r in rows]
 
 
 def item_history(db: Database, item_id: int) -> list[ItemView]:
