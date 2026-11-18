@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from textual import events
 from textual.app import App
 from textual.binding import Binding
 
@@ -34,6 +35,23 @@ class GianoApp(App):
             self.push_screen(QuickNoteScreen(note), lambda _: self.exit())
         else:
             self.push_screen(MainScreen())
+
+    async def on_event(self, event: events.Event) -> None:
+        if isinstance(event, events.MouseDown) and self._hits_removed_widget(event):
+            # Textual bug: a click that lands while a Markdown is re-rendering (e.g. the
+            # main screen's preview reloading right after a dialog closes) can hit a block
+            # that was already removed but is still in the screen's map, and Textual's text
+            # selection crashes on it ('NoneType' object has no attribute 'region'). The
+            # screen is changing under the mouse anyway: drop the click.
+            return
+        await super().on_event(event)
+
+    def _hits_removed_widget(self, event: events.MouseDown) -> bool:
+        try:
+            widget, _ = self.screen.get_widget_and_offset_at(event.x, event.y)
+        except Exception:
+            return False
+        return widget is not None and widget is not self.screen and not widget.is_attached
 
     def action_quick_note(self) -> None:
         if isinstance(self.screen, QuickNoteScreen):

@@ -273,15 +273,19 @@ class MainScreen(Screen):
         v = self.selected_item()
         md = self.query_one("#preview", Markdown)
         if v is None:
-            md.update("_Nenhum item selecionado._" if self.project else
-                      "# Bem-vindo ao Giano\n\nTecle **p** para criar o primeiro projeto, "
-                      "ou rode `giano demo` para gerar dados de exemplo.")
-            return
-        note = self.app.giano.notes.get(v.source_note_id) if v.source_note_id else None
-        family = [a for a in self.all_items if a.number == v.number and a.item_id != v.item_id]
-        original = next((a for a in family if not a.is_addendum), None) if v.is_addendum else None
-        addenda = [] if v.is_addendum else sorted(family, key=lambda a: a.addendum)
-        md.update(item_preview(v, note, original, addenda))
+            text = ("_Nenhum item selecionado._" if self.project else
+                    "# Bem-vindo ao Giano\n\nTecle **p** para criar o primeiro projeto, "
+                    "ou rode `giano demo` para gerar dados de exemplo.")
+        else:
+            note = self.app.giano.notes.get(v.source_note_id) if v.source_note_id else None
+            family = [a for a in self.all_items if a.number == v.number and a.item_id != v.item_id]
+            original = next((a for a in family if not a.is_addendum), None) if v.is_addendum else None
+            addenda = [] if v.is_addendum else sorted(family, key=lambda a: a.addendum)
+            text = item_preview(v, note, original, addenda)
+        # Same text (e.g. back from a dialog): keep the rendered blocks instead of rebuilding
+        # them; no flicker and no window where a click lands on a removed block.
+        if md.source != text:
+            md.update(text)
 
     # -- events ---------------------------------------------------------------
 

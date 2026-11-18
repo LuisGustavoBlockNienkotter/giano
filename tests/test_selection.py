@@ -299,3 +299,38 @@ def test_tui_html_export_old_revision_has_no_mark_option(g, project, five):
             await pilot.press("escape")
 
     asyncio.run(scenario())
+
+
+def test_tui_cancel_export_keeps_preview_and_survives_stale_clicks(g, project, five):
+    """Cancelling the HTML export used to crash Textual: the preview re-rendered on screen
+    resume and a click in that window hit a removed Markdown block."""
+    from textual import events
+    from textual.widgets import Markdown
+
+    def mouse(cls, x, y):
+        return cls(None, x, y, 0, 0, 1, False, False, False, screen_x=x, screen_y=y)
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            md = main.query_one("#preview", Markdown)
+            blocks = list(md.children)
+            await pilot.press("x")
+            await pilot.pause()
+            await pilot.click("#cancel")
+            await pilot.pause()
+            assert app.screen is main
+            assert list(md.children) == blocks  # same text: not rebuilt
+            r = md.region
+            for ticks in range(15):  # clicks at every moment of a re-render
+                md.update(f"# Outro {ticks}\n\nParágrafo {ticks}.\n\nMais um.")
+                for _ in range(ticks):
+                    await asyncio.sleep(0)
+                for y in range(r.y, r.bottom):
+                    await app.on_event(mouse(events.MouseDown, r.x + 3, y))
+                    await app.on_event(mouse(events.MouseUp, r.x + 3, y))
+                await pilot.pause()
+
+    asyncio.run(scenario())
