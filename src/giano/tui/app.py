@@ -5,6 +5,7 @@ from __future__ import annotations
 from textual.app import App
 from textual.binding import Binding
 
+from giano.domain import ValidationError
 from giano.services import Giano
 from giano.tui.main_screen import MainScreen
 from giano.tui.notes import NoteEditor, QuickNoteScreen
@@ -52,7 +53,11 @@ class GianoApp(App):
         for screen in reversed(self.screen_stack):
             refresh = getattr(screen, "refresh_data", None)
             if refresh is not None and screen.is_mounted:
-                message = refresh()
+                try:
+                    message = refresh()
+                except ValidationError as exc:  # e.g. no connection to Turso
+                    self.notify(str(exc), severity="error", timeout=15)
+                    return
                 if message:
                     warnings.append(message)
         for message in warnings:

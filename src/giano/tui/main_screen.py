@@ -93,7 +93,10 @@ class MainScreen(Screen):
         self.project: Project | None = None
         self.view_rev: int | None = None  # None = latest
         self.latest_rev = 0
-        self.items: list[ItemView] = []
+        self.items: list[ItemView] = []  # the list shown (normal list or archive)
+        # Every item at the shown revision (archived included): the preview finds the
+        # original/addenda here instead of querying (each query is a round trip on Turso).
+        self.all_items: list[ItemView] = []
         self.filters = Filters()
         self.show_archived = False  # False = normal list, True = the archive
         self.archive_filters = ARCHIVE_FILTERS
@@ -177,12 +180,14 @@ class MainScreen(Screen):
         g = self.app.giano
         table = self.query_one("#items", DataTable)
         if self.project is None:
-            self.items, self.latest_rev = [], 0
+            self.items, self.all_items, self.latest_rev = [], [], 0
         else:
             self.latest_rev = g.items.latest_revision(self.project.id)
             if self.view_rev is not None and self.view_rev >= self.latest_rev:
                 self.view_rev = None
-            self.items = g.items.list_items(self.project.id, self.view_rev, self.show_archived)
+            rev = self.latest_rev if self.view_rev is None else self.view_rev
+            self.all_items = g.items.list_items(self.project.id, rev)
+            self.items = [v for v in self.all_items if v.data.archived == self.show_archived]
         if select_item_id is None:
             current = self.selected_item()
             select_item_id = current.item_id if current else None
@@ -272,10 +277,10 @@ class MainScreen(Screen):
                       "# Bem-vindo ao Giano\n\nTecle **p** para criar o primeiro projeto, "
                       "ou rode `giano demo` para gerar dados de exemplo.")
             return
-        g = self.app.giano
-        note = g.notes.get(v.source_note_id) if v.source_note_id else None
-        original = g.items.parent(v, self.view_rev) if v.is_addendum else None
-        addenda = [] if v.is_addendum else g.items.addenda(v, self.view_rev)
+        note = self.app.giano.notes.get(v.source_note_id) if v.source_note_id else None
+        family = [a for a in self.all_items if a.number == v.number and a.item_id != v.item_id]
+        original = next((a for a in family if not a.is_addendum), None) if v.is_addendum else None
+        addenda = [] if v.is_addendum else sorted(family, key=lambda a: a.addendum)
         md.update(item_preview(v, note, original, addenda))
 
     # -- events ---------------------------------------------------------------

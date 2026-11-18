@@ -10,8 +10,9 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from giano.config import default_db_path
-from giano.db import Database
+from giano.config import DbTarget, resolve_db_target
+from giano.db import Database, transfer
+from giano.domain import ValidationError
 from giano.services.exports import Exporter
 from giano.services.items import ItemService
 from giano.services.notes import NoteService
@@ -32,13 +33,35 @@ class Giano:
 
     @classmethod
     def open(
-        cls, path: str | Path | None = None, clock: Callable[[], datetime] = datetime.now
+        cls,
+        path: str | Path | DbTarget | None = None,
+        clock: Callable[[], datetime] = datetime.now,
     ) -> Giano:
-        return cls(Database(path or default_db_path()), clock)
+        """Open the database: ``path`` (file or :class:`DbTarget`) or the configured one
+        (``GIANO_DB``, Turso, the local default; see :mod:`giano.config`)."""
+        target = resolve_db_target(path)
+        return cls(Database(target.location, target.auth_token), clock)
 
     @property
     def db_path(self) -> str:
+        """File path or Turso URL (never the token)."""
         return self.db.path
+
+    @property
+    def remote(self) -> bool:
+        return self.db.remote
+
+    def copy_to(self, other: Giano) -> dict[str, int]:
+        """Copy all data of this database into ``other``, which must be empty
+        (e.g. the local file into a new Turso database). Returns rows per table."""
+        if not transfer.is_empty(other.db):
+            raise ValidationError(
+                f"O banco de destino ({other.db_path}) já tem dados; a cópia só é feita "
+                "para um banco vazio."
+            )
+        # The export folder is a setting of each computer, not of the shared database.
+        skip = ("export_dir",) if other.remote else ()
+        return transfer.copy_all(self.db, other.db, skip_settings=skip)
 
     def close(self) -> None:
         self.db.close()

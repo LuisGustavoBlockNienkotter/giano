@@ -300,7 +300,8 @@ class SettingsScreen(ModalScreen[None]):
                 yield Button("Salvar", variant="primary", id="save")
                 yield Button("Restaurar template padrão", id="reset")
                 yield Button("Cancelar", id="cancel")
-            yield Static(f"Banco de dados: {self.app.giano.db_path}", classes="muted", markup=False)
+            where = "Banco de dados (Turso)" if self.app.giano.remote else "Banco de dados"
+            yield Static(f"{where}: {self.app.giano.db_path}", classes="muted", markup=False)
         yield Footer(compact=True, show_command_palette=False)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import locale
+import sqlite3
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -15,6 +16,8 @@ from rich.markup import escape
 from rich.table import Table
 from rich.text import Text
 
+from giano import config as cfg
+from giano.config import DbTarget, normalize_turso_url, resolve_db_target
 from giano.domain import (
     ItemData,
     ItemStatus,
@@ -42,15 +45,32 @@ item_app = typer.Typer(
     help="Cria, mostra, edita e arquiva itens (sem abrir a interface).", no_args_is_help=True
 )
 app.add_typer(item_app, name="item")
+turso_app = typer.Typer(
+    help="Banco no Turso: use as mesmas listas em vários computadores.", no_args_is_help=True
+)
+app.add_typer(turso_app, name="turso")
 
 console = Console()
 err = Console(stderr=True)
 
 
+def _open(target=None) -> Giano:
+    """Open a database, turning connection problems into a readable error."""
+    try:
+        return Giano.open(target)
+    except (sqlite3.Error, RuntimeError, OSError) as exc:
+        where = getattr(target, "location", None) or target or "o banco de dados"
+        _fail(f"Não foi possível abrir {where}: {exc}")
+        raise  # unreachable: _fail exits
+
+
 def _giano(ctx: typer.Context) -> Giano:
     obj = ctx.find_root().obj
     if obj.get("giano") is None:
-        obj["giano"] = Giano.open(obj.get("db"))
+        if obj.get("db") is not None:
+            obj["giano"] = _open(obj["db"])
+        else:
+            obj["giano"] = _open(resolve_db_target())
     return obj["giano"]
 
 
@@ -64,7 +84,11 @@ def root(
     ctx: typer.Context,
     db: Annotated[
         Optional[Path],
-        typer.Option("--db", help="Arquivo do banco (padrão: variável GIANO_DB ou pasta de dados do usuário)."),
+        typer.Option(
+            "--db",
+            help="Arquivo SQLite local a usar (ignora o Turso). Padrão: GIANO_DB, o Turso "
+            "configurado (giano turso configurar) ou a pasta de dados do usuário.",
+        ),
     ] = None,
 ) -> None:
     ctx.obj = {"db": db, "giano": None}
@@ -252,6 +276,112 @@ def config(
     console.print(f"Pasta de exportação: {g.settings.export_dir}")
     console.print("Template do pedido de análise (edite na TUI, tecla g):")
     console.print(g.settings.claude_prompt, markup=False)
+
+
+# ---------------------------------------------------------------------------
+# Turso (shared database)
+# ---------------------------------------------------------------------------
+
+
+def _mask(token: str) -> str:
+    return f"{token[:4]}…{token[-4:]} ({len(token)} caracteres)" if len(token) > 12 else "(definido)"
+
+
+def _describe(g: Giano) -> str:
+    projects = g.projects.list()
+    return f"{len(projects)} projeto(s)" + (f": {', '.join(p.code for p in projects)}" if projects else "")
+
+
+@turso_app.command("configurar")
+def turso_configurar(
+    url: Annotated[str, typer.Option("--url", help="URL do banco (libsql://nome-org.turso.io).", prompt="URL do banco")],
+    token: Annotated[
+        str,
+        typer.Option("--token", help="Token de acesso (turso db tokens create <banco>).", prompt="Token",
+                     hide_input=True),
+    ],
+) -> None:
+    """Conecta este computador a um banco Turso (testa a conexão e salva a URL e o token)."""
+    url, token = normalize_turso_url(url), token.strip()
+    target = DbTarget(url, token)
+    if not target.remote:
+        _fail("A URL deve começar com libsql:// (ou https://).")
+    g = _open(target)
+    summary = _describe(g)
+    g.close()
+    path = cfg.save_config(**{cfg.TURSO_URL: url, cfg.TURSO_TOKEN: token})
+    console.print(f"Conectado a {url} ({summary}).", markup=False)
+    console.print(f"Configuração salva em {path}.", markup=False)
+    local = cfg.default_db_path()
+    if not summary.startswith("0 ") or not local.exists():
+        return
+    console.print(
+        f"O banco no Turso está vazio. Para levar as listas deste computador ({local}) para lá: "
+        "[bold]giano turso enviar[/]"
+    )
+
+
+@turso_app.command("status")
+def turso_status() -> None:
+    """Mostra qual banco está em uso e testa a conexão com o Turso."""
+    import os
+
+    target = resolve_db_target()
+    if not target.remote:
+        console.print(f"Usando o banco local {target.location} (Turso não configurado).", markup=False)
+        if os.environ.get("GIANO_DB") and cfg.turso_target():
+            console.print("GIANO_DB está definida e tem prioridade sobre o Turso.")
+        return
+    source = "variáveis GIANO_TURSO_URL/GIANO_TURSO_TOKEN" if os.environ.get("GIANO_TURSO_URL") else str(cfg.config_path())
+    console.print(f"Turso: {target.location}", markup=False)
+    console.print(f"Token: {_mask(target.auth_token or '')}  (de {source})", markup=False)
+    g = _open(target)
+    console.print(f"Conexão OK: {_describe(g)}.", markup=False)
+    g.close()
+
+
+@turso_app.command("desconectar")
+def turso_desconectar() -> None:
+    """Remove a URL e o token deste computador (volta a usar o banco local)."""
+    path = cfg.save_config(**{cfg.TURSO_URL: None, cfg.TURSO_TOKEN: None})
+    console.print(f"Turso removido de {path}. O Giano volta a usar {cfg.default_db_path()}.", markup=False)
+
+
+@turso_app.command("enviar")
+def turso_enviar(
+    de: Annotated[
+        Optional[Path],
+        typer.Option("--de", help="Arquivo local a enviar (padrão: o banco local deste computador)."),
+    ] = None,
+) -> None:
+    """Copia o banco local (projetos, itens, revisões, anotações) para o Turso, que deve estar vazio."""
+    source = de or cfg.default_db_path()
+    if not source.exists():
+        _fail(f"Arquivo não encontrado: {source}")
+    target = cfg.turso_target()
+    if target is None:
+        _fail("Configure o Turso antes: giano turso configurar")
+        return
+    local = _open(DbTarget(str(source)))
+    remote = _open(target)
+    try:
+        counts = local.copy_to(remote)
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    finally:
+        local.close()
+    console.print(
+        f"Enviado para {target.location}: {counts['projects']} projeto(s), {counts['items']} item(ns), "
+        f"{counts['revisions']} revisão(ões), {counts['notes']} anotação(ões).",
+        markup=False,
+    )
+    console.print(
+        f"Os dados continuam também no arquivo local {source}, que não é mais usado enquanto o "
+        "Turso estiver configurado (giano turso desconectar volta a usá-lo).",
+        markup=False,
+    )
+    remote.close()
 
 
 # ---------------------------------------------------------------------------

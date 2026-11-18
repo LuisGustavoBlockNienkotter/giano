@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from giano.db import connection
 from giano.domain import ItemData, ItemStatus, ItemType, Priority
 from giano.services import Giano
 
@@ -25,8 +26,25 @@ def clock() -> FakeClock:
     return FakeClock()
 
 
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    """Never read or write the real per-computer config (Turso URL/token, export folder)."""
+    monkeypatch.setenv("GIANO_CONFIG_DIR", str(tmp_path / "config"))
+    for var in ("GIANO_TURSO_URL", "GIANO_TURSO_TOKEN", "GIANO_DB"):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(params=["sqlite", "libsql"])
+def backend(request, monkeypatch) -> str:
+    """Run against Python's sqlite3 and against the Turso driver (libsql, on a local file:
+    same adapter as a libsql:// URL, without the network)."""
+    if request.param == "libsql":
+        monkeypatch.setattr(connection, "is_remote_url", lambda location: True)
+    return request.param
+
+
 @pytest.fixture
-def g(tmp_path, clock) -> Giano:
+def g(tmp_path, clock, backend) -> Giano:
     giano = Giano.open(tmp_path / "test.db", clock=clock)
     giano.settings.export_dir = str(tmp_path / "exports")
     yield giano

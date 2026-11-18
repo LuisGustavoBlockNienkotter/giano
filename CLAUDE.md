@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 Giano: TUI (Textual) to manage improvement lists per project, versioned by revisions.
+The database is a local SQLite file or a Turso (libSQL) database shared by several computers.
 The full product spec is in `SPEC.md`.
 
 ## Commands
@@ -23,9 +24,14 @@ them and fail without MSVC).
 ```
 src/giano/
   domain.py          enums (pt-BR labels), dataclasses, ItemData normalization, compare_items
-  config.py          DB/export locations, default Claude prompt
+  config.py          DB target resolution (--db/GIANO_DB > GIANO_TURSO_* env > config.json >
+                     local file), per-computer config.json (Turso URL/token, export_dir)
   db/                ONLY place with SQL
-    connection.py    Database: autocommit conn + transaction() (BEGIN IMMEDIATE, nestable)
+    connection.py    Database: autocommit conn + transaction() (BEGIN IMMEDIATE, nestable);
+                     a libsql:// URL uses remote.py instead of sqlite3
+    remote.py        RemoteConnection: libsql driver behind the sqlite3 surface (Row with
+                     row["col"], :name -> ?N params, errors -> sqlite3.IntegrityError/OperationalError)
+    transfer.py      copy all rows into an empty DB (`giano turso enviar`)
     migrations.py    MIGRATIONS list + schema_version table (append new versions, never edit)
     projects.py items.py notes.py settings.py search.py   repositories (plain functions)
   services/          business rules; the UI and CLI only call these
@@ -44,7 +50,9 @@ src/giano/
   cli.py             Typer app (entry point `giano`); no subcommand = TUI; `giano item ...`
                      / `giano itens` = non-interactive item commands (incl. `item adendo`) (used by a user-level
                      `giano` skill in ~/.claude/skills so Claude can file items from any folder)
-tests/               pytest; test_tui.py drives the app with Textual's pilot
+tests/               pytest; test_tui.py drives the app with Textual's pilot. The `g` fixture
+                     runs every test twice: sqlite3 and the libsql driver on a local file
+                     (same adapter as Turso, no network). Config is isolated per test.
 ```
 
 ## Revision model (core invariant)
@@ -81,6 +89,14 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot
   in the stack that defines it; new screens that show DB data should implement it. Editors
   never drop unsaved input (item editor confirms before overwriting an external change).
 - Services take a `clock` callable so tests are deterministic (`tests/conftest.py::FakeClock`).
+- SQL must work on both drivers: stick to the `Database` methods (execute/query/query_one/
+  transaction); don't use sqlite3-only APIs (row_factory, create_function, backup...).
+  On Turso every statement is a network round trip (~70-200 ms): prefer one query to N+1,
+  and reuse what a screen already loaded (MainScreen previews from `all_items`, so moving
+  the cursor does no query). Network/auth failures raise `DatabaseUnavailable`, a
+  `ValidationError`: the UI shows it like any refused operation.
+- `settings` in the DB are shared by every computer; per-computer values (export_dir with
+  Turso) go to `config.json` (`config.load_config/save_config`).
 - Schema changes: add `(N, sql)` to `MIGRATIONS`; add a test. Migrations run with foreign
   keys off and are checked with `PRAGMA foreign_key_check` before commit, so a script may
   rebuild a table (V3 rebuilt `items`).

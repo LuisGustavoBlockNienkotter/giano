@@ -13,6 +13,7 @@ nova revisão, e qualquer revisão anterior pode ser consultada, comparada e exp
 - Exportação para o Claude (Markdown com contexto, lista atual e anotações pendentes)
 - Exportação HTML autocontida, pronta para enviar ou imprimir
 - Busca textual (SQLite FTS5) em itens e anotações
+- Banco local (SQLite) ou no [Turso](https://turso.tech), para usar as mesmas listas em vários computadores
 - Arquivo de itens: tire da lista e das exportações o que não quer mais ver, sem perder nada
 - Adendos (`MERC-33.1`): registre o retorno/ajuste de um item já feito sem mexer no texto
   original, e gerencie (e exporte) o adendo à parte
@@ -43,6 +44,27 @@ recente no Windows.)
 O banco fica na pasta de dados do usuário (ex.: `%LOCALAPPDATA%\giano\giano.db` no
 Windows, `~/.local/share/giano/giano.db` no Linux). Use `GIANO_DB=/caminho/arquivo.db`
 ou `giano --db arquivo.db` para usar outro.
+
+## Vários computadores (Turso)
+
+Para usar as mesmas listas em mais de um computador, guarde o banco no
+[Turso](https://turso.tech) (SQLite na nuvem). Crie o banco e um token no painel do Turso
+(ou com a CLI: `turso db create giano`, `turso db show giano --url` e
+`turso db tokens create giano`) e, em cada computador:
+
+```bash
+giano turso configurar          # pede a URL (libsql://giano-<org>.turso.io) e o token
+giano turso enviar              # só no primeiro: copia o banco local para o Turso (vazio)
+giano turso status              # mostra o banco em uso e testa a conexão
+giano turso desconectar         # volta a usar o banco local
+```
+
+A URL e o token ficam no `config.json` da pasta de configuração do usuário (no Windows,
+`%LOCALAPPDATA%\giano\config.json`), junto com a pasta de exportação, que é de cada
+computador. As variáveis `GIANO_TURSO_URL` e `GIANO_TURSO_TOKEN` têm prioridade sobre o
+arquivo; `GIANO_DB` ou `--db` usam um arquivo local mesmo com o Turso configurado.
+Com o Turso, `F5` traz o que foi alterado em outro computador. O Giano precisa de internet
+para abrir o banco.
 
 ## Atalhos da interface
 

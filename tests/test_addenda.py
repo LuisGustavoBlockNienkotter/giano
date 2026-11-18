@@ -334,3 +334,30 @@ def test_tui_delete_original_with_addenda_shows_error(g, project, original):
             assert g.items.get(original.item_id) is not None
 
     run(scenario())
+
+
+def test_tui_preview_links_archived_original_and_addenda(g, project, original):
+    """The preview finds the original/addenda in the loaded list, archived ones included."""
+    first = g.items.create_addendum(original.item_id, adj("Primeiro ajuste"))
+    g.items.create_addendum(original.item_id, adj("Segundo ajuste"))
+    g.items.archive(first.item_id)
+    g.items.archive(original.item_id)
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            screen = app.screen
+            assert [v.code for v in screen.items] == ["MERC-1.2"]
+            preview = screen.query_one("#preview", Markdown)
+            assert "Cálculo de frete" in preview.source and "arquivado" in preview.source
+            await pilot.press("v")  # archive: the original lists both addenda
+            await pilot.pause()
+            screen.query_one("#items", DataTable).move_cursor(row=0)
+            await pilot.pause()
+            assert screen.selected_item().code == "MERC-1"
+            source = screen.query_one("#preview", Markdown).source
+            assert "MERC-1.1" in source and "MERC-1.2" in source
+            assert source.index("MERC-1.1") < source.index("MERC-1.2")
+
+    run(scenario())

@@ -1,9 +1,14 @@
-"""User settings stored in the database."""
+"""User settings.
+
+The Claude prompt is stored in the database (shared by every computer). The export folder
+belongs to the computer: with a Turso database it is kept in the local ``config.json``.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from giano import config
 from giano.config import DEFAULT_CLAUDE_PROMPT, default_export_dir
 from giano.db import Database
 from giano.db import settings as repo
@@ -23,11 +28,17 @@ class SettingsService:
 
     @property
     def export_dir(self) -> Path:
-        value = repo.get(self.db, EXPORT_DIR)
+        if self.db.remote:
+            value = config.load_config().get(config.EXPORT_DIR)
+        else:
+            value = repo.get(self.db, EXPORT_DIR)
         return Path(value).expanduser() if value else default_export_dir()
 
     @export_dir.setter
     def export_dir(self, value: str | Path | None) -> None:
+        if self.db.remote:
+            config.save_config(**{config.EXPORT_DIR: str(value) if value else None})
+            return
         with self.db.transaction():
             if value in (None, ""):
                 repo.delete(self.db, EXPORT_DIR)
