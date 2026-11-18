@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 
@@ -306,11 +306,16 @@ class Exporter:
         compare_to: int | None = None,
         numbers=None,
         mark_in_progress: bool = False,
+        progress: Callable[[int, int], None] | None = None,
     ) -> ExportResult:
         """Write the HTML file. With ``mark_in_progress`` the exported items whose status is
         Aberto/Em análise/Aprovado move to "Em desenvolvimento" (one revision each, after the
         document is rendered: the file shows the list as it was exported). Only for the
-        latest revision; the status changes and the file are all or nothing."""
+        latest revision; the status changes and the file are all or nothing.
+
+        ``progress(done, total)`` is called before the first status change and after each
+        one (``total`` = items to mark), so a UI can show how far it got: on Turso every
+        change is several network round trips."""
         project = self.projects.require(project_code)
         latest = self.items.latest_revision(project.id)
         if mark_in_progress and rev is not None and rev != latest:
@@ -326,10 +331,18 @@ class Exporter:
         with self.items.db.transaction():
             if mark_in_progress:
                 keys = selection_keys(numbers)
-                for v in self.items.list_items(project.id, rev, archived=False):
-                    if (keys is None or v.key in keys) and v.data.status in MARKABLE:
-                        self.items.set_status(v.item_id, ItemStatus.IN_PROGRESS)
-                        marked.append(v.code)
+                todo = [
+                    v for v in self.items.list_items(project.id, rev, archived=False)
+                    if (keys is None or v.key in keys) and v.data.status in MARKABLE
+                ]
+                if progress:
+                    progress(0, len(todo))
+                for v in todo:
+                    # update() (not set_status) reuses the view just loaded: one query less.
+                    self.items.update(v.item_id, replace(v.data, status=ItemStatus.IN_PROGRESS))
+                    marked.append(v.code)
+                    if progress:
+                        progress(len(marked), len(todo))
             # Written inside the transaction: if the file fails, no status changes.
             folder.mkdir(parents=True, exist_ok=True)
             path.write_text(html, encoding="utf-8")

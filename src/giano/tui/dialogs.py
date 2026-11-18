@@ -1,4 +1,4 @@
-"""Modal dialogs: confirmation, filters, quick status, exports, settings."""
+"""Modal dialogs: confirmation, filters, quick status, exports, settings, progress."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from textual.widgets import (
     Input,
     Label,
     OptionList,
+    ProgressBar,
     Select,
     SelectionList,
     Static,
@@ -433,3 +434,32 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class ProgressDialog(ModalScreen[None]):
+    """Progress of a long operation running in a worker thread (e.g. the HTML export
+    marking items as "Em desenvolvimento" on Turso). No key closes it: the caller
+    dismisses it when the work ends, and the app's own actions wait meanwhile."""
+
+    def __init__(self, title: str, message: str = "Aguarde…"):
+        super().__init__()
+        self.title_text = title
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(classes="dialog", id="progress-dialog"):
+            yield Label(self.title_text, classes="dialog-title", markup=False)
+            yield Static(self.message, id="progress-text", markup=False)
+            yield ProgressBar(id="progress-bar", show_eta=False)
+
+    def set_progress(self, done: int, total: int, what: str = "itens") -> None:
+        """``done`` of ``total`` steps finished."""
+        self.query_one("#progress-bar", ProgressBar).update(total=max(total, 1),
+                                                             progress=done if total else 1)
+        text = f"{done} de {total} {what} · faltam {total - done}"
+        if done >= total:
+            text += " · finalizando…"
+        self.query_one("#progress-text", Static).update(text)
+
+    def set_message(self, message: str) -> None:
+        self.query_one("#progress-text", Static).update(message)

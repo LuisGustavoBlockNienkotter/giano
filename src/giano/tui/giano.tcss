@@ -283,3 +283,13 @@ NoteEditor {
 #export-count {
     margin-bottom: 1;
 }
+
+/* ---- progress of a long operation ---- */
+
+#progress-text {
+    margin-bottom: 1;
+}
+
+#progress-bar Bar {
+    width: 1fr;
+}

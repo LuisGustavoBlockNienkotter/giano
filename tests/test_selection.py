@@ -159,7 +159,7 @@ def test_tui_html_export_selection(g, project, five, tmp_path):
             await pilot.pause()
             assert "3 de 5" in str(dialog.query_one("#export-count").render())
             await pilot.press("ctrl+s")
-            await pilot.pause()
+            await _wait_export(app, pilot)
             assert isinstance(app.screen, MainScreen)
 
     asyncio.run(scenario())
@@ -197,6 +197,13 @@ def test_tui_html_export_only_filtered_button(g, project, five, tmp_path):
 
 
 # ---------------------------------------------------------------- mark "Em desenvolvimento"
+
+
+async def _wait_export(app, pilot):
+    """The TUI exports in a worker thread behind a ProgressDialog."""
+    await app.workers.wait_for_complete()
+    for _ in range(5):
+        await pilot.pause()
 
 
 def _statuses(g, project):
@@ -258,8 +265,19 @@ def test_cli_em_desenvolvimento(g, project, five, tmp_path):
     assert s[2] == s[3] == ItemStatus.IN_PROGRESS and s[1] == ItemStatus.OPEN
 
 
-def test_tui_html_export_mark_in_progress(g, project, five, tmp_path):
+def test_tui_html_export_mark_in_progress(g, project, five, tmp_path, monkeypatch):
     from textual.widgets import Checkbox
+
+    from giano.tui.dialogs import ProgressDialog
+
+    seen = []
+    original = ProgressDialog.set_progress
+
+    def spy(self, done, total, what="itens"):
+        seen.append((done, total))
+        original(self, done, total, what)
+
+    monkeypatch.setattr(ProgressDialog, "set_progress", spy)
 
     async def scenario():
         app = GianoApp(g)
@@ -274,10 +292,13 @@ def test_tui_html_export_mark_in_progress(g, project, five, tmp_path):
             dialog.query_one("#export-mark", Checkbox).value = True
             await pilot.press("ctrl+s")
             await pilot.pause()
+            assert isinstance(app.screen, ProgressDialog) or seen  # progress shown meanwhile
+            await _wait_export(app, pilot)
             assert isinstance(app.screen, MainScreen)
             assert app.screen.latest_rev == 11  # list reloaded after the status changes
 
     asyncio.run(scenario())
+    assert seen == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]
     assert len(list((tmp_path / "exports").glob("giano_MERC_rev7_*.html"))) == 1
     s = _statuses(g, project)
     assert s[3] == ItemStatus.OPEN
@@ -332,5 +353,42 @@ def test_tui_cancel_export_keeps_preview_and_survives_stale_clicks(g, project, f
                     await app.on_event(mouse(events.MouseDown, r.x + 3, y))
                     await app.on_event(mouse(events.MouseUp, r.x + 3, y))
                 await pilot.pause()
+
+    asyncio.run(scenario())
+
+
+def test_html_mark_in_progress_reports_progress(g, project, five):
+    g.items.set_status(five[0].item_id, ItemStatus.DONE)
+    calls = []
+    g.exports.export_html("MERC", mark_in_progress=True, progress=lambda d, t: calls.append((d, t)))
+    assert calls == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]
+    calls.clear()
+    g.exports.export_html("MERC", mark_in_progress=True, progress=lambda d, t: calls.append((d, t)))
+    assert calls == [(0, 0)]  # nothing left to mark
+    calls.clear()
+    g.exports.export_html("MERC", progress=lambda d, t: calls.append((d, t)))
+    assert calls == []  # not marking: no progress steps
+
+
+def test_tui_progress_dialog_blocks_app_actions(g, project, five):
+    from giano.tui.dialogs import ProgressDialog
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            dialog = ProgressDialog("Exportando", "Gerando o HTML…")
+            await app.push_screen(dialog)
+            await pilot.pause()
+            assert app.check_action("refresh_data", ()) is False
+            assert app.check_action("quick_note", ()) is False
+            await pilot.press("ctrl+n", "escape")  # neither opens a note nor closes it
+            await pilot.pause()
+            assert app.screen is dialog
+            dialog.set_progress(2, 5, "itens")
+            assert "2 de 5 itens · faltam 3" in str(dialog.query_one("#progress-text").render())
+            dialog.dismiss()
+            await pilot.pause()
+            assert app.check_action("refresh_data", ()) is not False
 
     asyncio.run(scenario())

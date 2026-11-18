@@ -19,6 +19,7 @@ from giano.tui.dialogs import (
     Filters,
     FilterDialog,
     HtmlExportDialog,
+    ProgressDialog,
     SettingsScreen,
 )
 from giano.tui.item_editor import ItemEditorScreen
@@ -542,25 +543,51 @@ class MainScreen(Screen):
         def run(opts) -> None:
             if opts is None:
                 return
-            try:
-                result = self.app.giano.exports.export_html(
-                    project.code, rev, changes=opts.changes, numbers=opts.numbers,
-                    mark_in_progress=opts.mark_in_progress,
-                )
-            except (ValidationError, OSError) as exc:
-                self.notify(str(exc), severity="error", title="Falha na exportação")
-                return
             n = len(opts.numbers) if opts.numbers is not None else len(self.items)
-            message = str(result.path)
-            if opts.mark_in_progress:
-                message += (
-                    f"\n{len(result.marked)} itens marcados como Em desenvolvimento"
-                    + (f": {', '.join(result.marked)}" if result.marked else ".")
+            progress = ProgressDialog(
+                f"Exportando HTML — {project.code}, Rev. {shown_rev} ({n} itens)",
+                "Gerando o HTML…",
+            )
+            self.app.push_screen(progress)
+
+            def report(done: int, total: int) -> None:
+                self.app.call_from_thread(
+                    progress.set_progress, done, total, "itens marcados como Em desenvolvimento"
                 )
-                if result.marked:
-                    self.reload_items()
-            self.notify(message, title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
-                        timeout=8)
+
+            def work() -> None:
+                # In a thread: on Turso each status change is several network round trips
+                # and the UI must keep drawing the progress meanwhile.
+                try:
+                    result = self.app.giano.exports.export_html(
+                        project.code, rev, changes=opts.changes, numbers=opts.numbers,
+                        mark_in_progress=opts.mark_in_progress, progress=report,
+                    )
+                except (ValidationError, OSError) as exc:
+                    self.app.call_from_thread(finish, None, exc)
+                except BaseException:
+                    self.app.call_from_thread(progress.dismiss)
+                    raise
+                else:
+                    self.app.call_from_thread(finish, result, None)
+
+            def finish(result, error) -> None:
+                progress.dismiss()
+                if error is not None:
+                    self.notify(str(error), severity="error", title="Falha na exportação")
+                    return
+                message = str(result.path)
+                if opts.mark_in_progress:
+                    message += (
+                        f"\n{len(result.marked)} itens marcados como Em desenvolvimento"
+                        + (f": {', '.join(result.marked)}" if result.marked else ".")
+                    )
+                    if result.marked:
+                        self.reload_items()
+                self.notify(message, title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
+                            timeout=8)
+
+            self.run_worker(work, name="export-html", group="export-html", thread=True)
 
         self.app.push_screen(
             HtmlExportDialog(

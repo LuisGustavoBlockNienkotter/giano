@@ -8,6 +8,7 @@ from textual.binding import Binding
 
 from giano.domain import ValidationError
 from giano.services import Giano
+from giano.tui.dialogs import ProgressDialog
 from giano.tui.main_screen import MainScreen
 from giano.tui.notes import NoteEditor, QuickNoteScreen
 
@@ -35,6 +36,13 @@ class GianoApp(App):
             self.push_screen(QuickNoteScreen(note), lambda _: self.exit())
         else:
             self.push_screen(MainScreen())
+
+    def check_action(self, action: str, parameters) -> bool | None:
+        # A worker thread is using the database (ProgressDialog on top): F5, quick note,
+        # the command palette… would use the same connection mid-transaction. Wait.
+        if isinstance(self.screen, ProgressDialog) and action != "quit":
+            return False
+        return super().check_action(action, parameters)
 
     async def on_event(self, event: events.Event) -> None:
         if isinstance(event, events.MouseDown) and self._hits_removed_widget(event):
