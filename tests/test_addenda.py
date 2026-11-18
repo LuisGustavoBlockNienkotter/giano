@@ -331,6 +331,8 @@ def test_tui_delete_original_with_addenda_shows_error(g, project, original):
             await pilot.pause()
             await pilot.press("y")
             await pilot.pause()
+            await app.workers.wait_for_complete()  # the change runs in a worker
+            await pilot.pause()
             assert g.items.get(original.item_id) is not None
 
     run(scenario())

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypeVar
+
 from textual import events
 from textual.app import App
 from textual.binding import Binding
@@ -11,6 +14,8 @@ from giano.services import Giano
 from giano.tui.dialogs import ProgressDialog
 from giano.tui.main_screen import MainScreen
 from giano.tui.notes import NoteEditor, QuickNoteScreen
+
+T = TypeVar("T")
 
 
 class GianoApp(App):
@@ -37,10 +42,59 @@ class GianoApp(App):
         else:
             self.push_screen(MainScreen())
 
+    @property
+    def busy(self) -> bool:
+        """A worker thread is using the database (see :meth:`run_busy`)."""
+        return isinstance(self.screen, ProgressDialog)
+
+    def run_busy(
+        self,
+        title: str,
+        work: Callable[[Callable[..., None]], T],
+        done: Callable[[T], None],
+        *,
+        message: str = "Salvando…",
+        error_title: str = "Operação não concluída",
+    ) -> None:
+        """Run ``work(report)`` in a thread behind a :class:`ProgressDialog`, then
+        ``done(result)`` on the UI thread once the dialog is closed.
+
+        On Turso every statement is a network round trip: done on the UI thread a change
+        froze the screen with no feedback. ``report(done, total, what)`` updates the
+        dialog's counter. A :class:`ValidationError`/``OSError`` closes the dialog and is
+        shown like any refused operation. While the dialog is up the app's actions wait
+        (:meth:`check_action`) and screens must not touch the database: the worker's
+        transaction uses the same connection."""
+        dialog = ProgressDialog(title, message)
+        self.push_screen(dialog)
+
+        def report(n: int, total: int, what: str = "itens") -> None:
+            self.call_from_thread(dialog.set_progress, n, total, what)
+
+        def run() -> None:
+            try:
+                result = work(report)
+            except (ValidationError, OSError) as exc:
+                self.call_from_thread(finish, None, exc)
+            except BaseException:
+                self.call_from_thread(dialog.dismiss)
+                raise
+            else:
+                self.call_from_thread(finish, result, None)
+
+        def finish(result, error) -> None:
+            dialog.dismiss()
+            if error is not None:
+                self.notify(str(error), severity="error", title=error_title)
+                return
+            done(result)
+
+        self.run_worker(run, name="busy", group="busy", thread=True)
+
     def check_action(self, action: str, parameters) -> bool | None:
         # A worker thread is using the database (ProgressDialog on top): F5, quick note,
         # the command palette… would use the same connection mid-transaction. Wait.
-        if isinstance(self.screen, ProgressDialog) and action != "quit":
+        if self.busy and action != "quit":
             return False
         return super().check_action(action, parameters)
 

@@ -133,6 +133,8 @@ def test_old_revision_is_read_only_and_delete_confirms(g):
             await pilot.pause()
             await pilot.click("#yes")
             await pilot.pause()
+            await app.workers.wait_for_complete()  # the change runs in a worker
+            await pilot.pause()
 
     run(scenario())
     assert g.items.latest_revision(loja.id) == latest + 1
@@ -295,3 +297,97 @@ def test_hide_closed_is_default_and_search_still_reaches_closed_items(g, project
             assert not main.filters.hide_closed
 
     run(scenario())
+
+
+# ---------------------------------------------------------------- changes in background
+
+
+def _status_scenario(g, project, monkeypatch, set_status):
+    """Press s, choose "Em desenvolvimento"; ``set_status`` replaces the service call."""
+    import threading
+
+    from tests.conftest import make
+    from giano.tui.dialogs import ChoiceDialog, ProgressDialog
+
+    v = g.items.create(project.id, make("Item A"))
+    gate = threading.Event()
+    real = g.items.set_status
+
+    def slow(item_id, status):
+        assert gate.wait(5)
+        return set_status(real, item_id, status)
+
+    monkeypatch.setattr(g.items, "set_status", slow)
+    seen = {}
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            reloads = []
+            monkeypatch.setattr(main, "reload_projects", lambda *a, **k: reloads.append(1))
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(app.screen, ChoiceDialog)
+            app.screen.dismiss(ItemStatus.IN_PROGRESS)
+            for _ in range(3):
+                await pilot.pause()
+            # Loading while the change runs; the main screen does not touch the database.
+            assert isinstance(app.screen, ProgressDialog)
+            assert "status → Em desenvolvimento" in str(app.screen.query_one(".dialog-title").render())
+            assert app.check_action("refresh_data", ()) is False
+            assert reloads == []
+            gate.set()
+            await app.workers.wait_for_complete()
+            for _ in range(5):
+                await pilot.pause()
+            assert app.screen is main
+            seen["reloads_after"] = len(reloads)
+            seen["rows"] = [str(c) for c in main.query_one("#items", DataTable).get_row_at(0)]
+            seen["notes"] = [(n.title, n.message, n.severity) for n in app._notifications]
+
+    run(scenario())
+    return v, seen
+
+
+def test_tui_quick_status_shows_loading_then_ok(g, project, monkeypatch):
+    v, seen = _status_scenario(g, project, monkeypatch, lambda real, i, s: real(i, s))
+    assert g.items.get(v.item_id).data.status == ItemStatus.IN_PROGRESS
+    assert "Em desenvolvimento" in seen["rows"]  # table refreshed with the worker's data
+    assert seen["reloads_after"] == 0  # the worker already re-read the list
+    assert ("OK", "✓ MERC-1: status Aberto → Em desenvolvimento (Rev. 2).", "information") \
+        in seen["notes"]
+
+
+def test_tui_quick_status_refused_shows_error(g, project, monkeypatch):
+    from giano.domain import ValidationError
+
+    def refuse(real, item_id, status):
+        raise ValidationError("Sem conexão com o banco.")
+
+    v, seen = _status_scenario(g, project, monkeypatch, refuse)
+    assert g.items.get(v.item_id).data.status == ItemStatus.OPEN
+    assert ("Operação não concluída", "Sem conexão com o banco.", "error") in seen["notes"]
+    assert seen["reloads_after"] == 1  # refused: the list is re-read as it is
+
+
+def test_tui_quick_status_same_status_does_nothing(g, project):
+    from tests.conftest import make
+    from giano.tui.dialogs import ChoiceDialog
+
+    g.items.create(project.id, make("Item A"))
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(app.screen, ChoiceDialog)
+            app.screen.dismiss(ItemStatus.OPEN)
+            await pilot.pause()
+            assert isinstance(app.screen, MainScreen)  # no loading for nothing
+
+    run(scenario())
+    assert g.items.latest_revision(project.id) == 1

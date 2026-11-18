@@ -203,6 +203,8 @@ def test_tui_archive_and_restore(g, project, three):
             assert table.row_count == 3
             await pilot.press("z")  # archive the selected item
             await pilot.pause()
+            await app.workers.wait_for_complete()  # the change runs in a worker
+            await pilot.pause()
             assert g.items.get(b.item_id).data.archived
             assert table.row_count == 2
 
@@ -216,6 +218,8 @@ def test_tui_archive_and_restore(g, project, three):
             await pilot.pause()
             assert app.screen is main
             await pilot.press("z")  # restore
+            await pilot.pause()
+            await app.workers.wait_for_complete()  # the change runs in a worker
             await pilot.pause()
             assert not g.items.get(b.item_id).data.archived
             assert table.row_count == 0

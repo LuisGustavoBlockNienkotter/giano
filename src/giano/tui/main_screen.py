@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypeVar
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -19,7 +22,6 @@ from giano.tui.dialogs import (
     Filters,
     FilterDialog,
     HtmlExportDialog,
-    ProgressDialog,
     SettingsScreen,
 )
 from giano.tui.item_editor import ItemEditorScreen
@@ -28,6 +30,8 @@ from giano.tui.projects import ProjectEditor, ProjectsScreen
 from giano.tui.revisions import RevisionsScreen
 from giano.tui.search import SearchScreen
 from giano.tui.widgets import plain
+
+T = TypeVar("T")
 
 COLUMNS = [
     ("id", "ID"),
@@ -103,6 +107,9 @@ class MainScreen(Screen):
         self.archive_filters = ARCHIVE_FILTERS
         self.sort_column = "priority"
         self.sort_reverse = False
+        # Set when a background change already reloaded the list: the resume that follows
+        # (its ProgressDialog closing) skips the reload instead of repeating it.
+        self._fresh_after_busy = False
 
     # -- layout ---------------------------------------------------------------
 
@@ -128,8 +135,14 @@ class MainScreen(Screen):
 
     def on_screen_resume(self) -> None:
         # Coming back from another screen: data may have changed.
-        if self.is_mounted:
-            self.reload_projects(keep_rev=True)
+        if not self.is_mounted or self.app.screen is not self:
+            # A dialog's callback already pushed another screen (e.g. a ProgressDialog
+            # whose worker is using the database right now): not our turn.
+            return
+        if self._fresh_after_busy:
+            self._fresh_after_busy = False
+            return
+        self.reload_projects(keep_rev=True)
 
     def refresh_data(self) -> None:
         """F5: reload projects and items, keeping project, revision, filters and selection."""
@@ -177,17 +190,30 @@ class MainScreen(Screen):
         self.app.current_project_id = project.id if project else None
         self.reload_items()
 
-    def reload_items(self, select_item_id: int | None = None) -> None:
+    def fetch_items(self) -> tuple[int, list[ItemView]]:
+        """(latest revision, every item at the shown revision) of the current project.
+        Only reads the database: safe in a :meth:`GianoApp.run_busy` worker."""
+        if self.project is None:
+            return 0, []
         g = self.app.giano
+        latest = g.items.latest_revision(self.project.id)
+        rev = latest if self.view_rev is None or self.view_rev >= latest else self.view_rev
+        return latest, g.items.list_items(self.project.id, rev)
+
+    def reload_items(
+        self,
+        select_item_id: int | None = None,
+        data: tuple[int, list[ItemView]] | None = None,
+    ) -> None:
+        """Reload the table; ``data`` = what :meth:`fetch_items` returned (e.g. in a
+        worker), otherwise it is fetched now."""
         table = self.query_one("#items", DataTable)
         if self.project is None:
             self.items, self.all_items, self.latest_rev = [], [], 0
         else:
-            self.latest_rev = g.items.latest_revision(self.project.id)
+            self.latest_rev, self.all_items = data if data is not None else self.fetch_items()
             if self.view_rev is not None and self.view_rev >= self.latest_rev:
                 self.view_rev = None
-            rev = self.latest_rev if self.view_rev is None else self.view_rev
-            self.all_items = g.items.list_items(self.project.id, rev)
             self.items = [v for v in self.all_items if v.data.archived == self.show_archived]
         if select_item_id is None:
             current = self.selected_item()
@@ -388,6 +414,32 @@ class MainScreen(Screen):
         if view is not None:
             self.reload_items(select_item_id=view.item_id)
 
+    def _change_in_background(
+        self,
+        title: str,
+        change: Callable[[], T],
+        done: Callable[[T], None],
+        select_item_id: int | None = None,
+    ) -> None:
+        """Run a write (``change``) and re-read the list in a worker thread behind a
+        "Salvando…" dialog; then refresh the table and call ``done(result)``.
+        A refused change (``ValidationError``) is shown and the list stays as it was."""
+
+        def work(_report) -> tuple[T, tuple[int, list[ItemView]]]:
+            return change(), self.fetch_items()
+
+        def finish(outcome: tuple[T, tuple[int, list[ItemView]]]) -> None:
+            result, data = outcome
+            self._fresh_after_busy = True  # the resume after the dialog closes
+            self.reload_items(select_item_id=select_item_id, data=data)
+            done(result)
+
+        self.app.run_busy(title, work, finish)
+
+    def _ok(self, message: str) -> None:
+        """Confirm that a change was saved."""
+        self.notify(f"✓ {message}", title="OK", timeout=4)
+
     def action_delete_item(self) -> None:
         v = self.selected_item()
         if v is None or not self._guard_editable():
@@ -395,13 +447,11 @@ class MainScreen(Screen):
 
         def answer(ok: bool | None) -> None:
             if ok:
-                try:
-                    rev = self.app.giano.items.delete(v.item_id)
-                except ValidationError as exc:
-                    self.notify(str(exc), severity="error")
-                    return
-                self.notify(f"{v.code} excluído (Rev. {rev}).")
-                self.reload_items()
+                self._change_in_background(
+                    f"Excluindo {v.code}…",
+                    lambda: self.app.giano.items.delete(v.item_id),
+                    lambda rev: self._ok(f"{v.code} excluído (Rev. {rev})."),
+                )
 
         self.app.push_screen(
             ConfirmDialog(f"Excluir {v.code} — {v.data.title}?\n\n"
@@ -413,25 +463,23 @@ class MainScreen(Screen):
         v = self.selected_item()
         if v is None or not self._guard_not_archive() or not self._guard_editable():
             return
-        try:
-            new = self.app.giano.items.archive(v.item_id)
-        except ValidationError as exc:
-            self.notify(str(exc), severity="error")
-            return
-        self.notify(f"{v.code} arquivado (Rev. {new.rev_start}). Tecle v para ver o arquivo.")
-        self.reload_items()
+        self._change_in_background(
+            f"Arquivando {v.code}…",
+            lambda: self.app.giano.items.archive(v.item_id),
+            lambda new: self._ok(
+                f"{v.code} arquivado (Rev. {new.rev_start}). Tecle v para ver o arquivo."
+            ),
+        )
 
     def action_unarchive_item(self) -> None:
         v = self.selected_item()
         if v is None or not self._guard_editable():
             return
-        try:
-            new = self.app.giano.items.unarchive(v.item_id)
-        except ValidationError as exc:
-            self.notify(str(exc), severity="error")
-            return
-        self.notify(f"{v.code} restaurado à lista (Rev. {new.rev_start}).")
-        self.reload_items()
+        self._change_in_background(
+            f"Restaurando {v.code}…",
+            lambda: self.app.giano.items.unarchive(v.item_id),
+            lambda new: self._ok(f"{v.code} restaurado à lista (Rev. {new.rev_start})."),
+        )
 
     def action_toggle_archive_view(self) -> None:
         if self.project is None:
@@ -447,12 +495,20 @@ class MainScreen(Screen):
             return
 
         def apply(status) -> None:
-            if status is None:
+            if status is None or status == v.data.status:
                 return
-            new = self.app.giano.items.set_status(v.item_id, status)
-            if new:
-                self.notify(f"{v.code}: status {v.data.status.label} → {status.label} (Rev. {new.rev_start}).")
-            self.reload_items(select_item_id=v.item_id)
+
+            def done(new: ItemView | None) -> None:
+                if new:
+                    self._ok(f"{v.code}: status {v.data.status.label} → {status.label} "
+                             f"(Rev. {new.rev_start}).")
+
+            self._change_in_background(
+                f"{v.code}: status → {status.label}",
+                lambda: self.app.giano.items.set_status(v.item_id, status),
+                done,
+                select_item_id=v.item_id,
+            )
 
         self.app.push_screen(
             ChoiceDialog(f"Status de {v.code}", [(s.label, s) for s in ItemStatus], v.data.status),
@@ -544,50 +600,35 @@ class MainScreen(Screen):
             if opts is None:
                 return
             n = len(opts.numbers) if opts.numbers is not None else len(self.items)
-            progress = ProgressDialog(
-                f"Exportando HTML — {project.code}, Rev. {shown_rev} ({n} itens)",
-                "Gerando o HTML…",
-            )
-            self.app.push_screen(progress)
 
-            def report(done: int, total: int) -> None:
-                self.app.call_from_thread(
-                    progress.set_progress, done, total, "itens marcados como Em desenvolvimento"
+            def work(report):
+                # On Turso each status change is several network round trips: the dialog
+                # shows how many items are done meanwhile.
+                result = self.app.giano.exports.export_html(
+                    project.code, rev, changes=opts.changes, numbers=opts.numbers,
+                    mark_in_progress=opts.mark_in_progress,
+                    progress=lambda d, t: report(d, t, "itens marcados como Em desenvolvimento"),
                 )
+                return result, self.fetch_items() if result.marked else None
 
-            def work() -> None:
-                # In a thread: on Turso each status change is several network round trips
-                # and the UI must keep drawing the progress meanwhile.
-                try:
-                    result = self.app.giano.exports.export_html(
-                        project.code, rev, changes=opts.changes, numbers=opts.numbers,
-                        mark_in_progress=opts.mark_in_progress, progress=report,
-                    )
-                except (ValidationError, OSError) as exc:
-                    self.app.call_from_thread(finish, None, exc)
-                except BaseException:
-                    self.app.call_from_thread(progress.dismiss)
-                    raise
-                else:
-                    self.app.call_from_thread(finish, result, None)
-
-            def finish(result, error) -> None:
-                progress.dismiss()
-                if error is not None:
-                    self.notify(str(error), severity="error", title="Falha na exportação")
-                    return
+            def finish(outcome) -> None:
+                result, data = outcome
                 message = str(result.path)
                 if opts.mark_in_progress:
                     message += (
                         f"\n{len(result.marked)} itens marcados como Em desenvolvimento"
                         + (f": {', '.join(result.marked)}" if result.marked else ".")
                     )
-                    if result.marked:
-                        self.reload_items()
-                self.notify(message, title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
-                            timeout=8)
+                self._fresh_after_busy = True  # nothing else changed: no reload on resume
+                if data is not None:
+                    self.reload_items(data=data)
+                self.notify(f"✓ {message}",
+                            title=f"HTML exportado (Rev. {shown_rev}, {n} itens)", timeout=8)
 
-            self.run_worker(work, name="export-html", group="export-html", thread=True)
+            self.app.run_busy(
+                f"Exportando HTML — {project.code}, Rev. {shown_rev} ({n} itens)",
+                work, finish, message="Gerando o HTML…", error_title="Falha na exportação",
+            )
 
         self.app.push_screen(
             HtmlExportDialog(
