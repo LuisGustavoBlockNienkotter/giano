@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from giano.domain import (
     ItemKey,
+    ItemStatus,
     ItemType,
     ItemView,
     NoteStatus,
@@ -33,6 +34,12 @@ class ExportResult:
     path: Path
     content: str
     summary: str  # user-facing one-liner
+    marked: tuple[str, ...] = ()  # codes moved to "Em desenvolvimento" by the export
+
+
+# Statuses that "mark as in development" moves forward; done/discarded items and the
+# ones already in development are left alone.
+MARKABLE = (ItemStatus.OPEN, ItemStatus.ANALYSIS, ItemStatus.APPROVED)
 
 
 def sort_key(v: ItemView):
@@ -298,12 +305,38 @@ class Exporter:
         changes: bool = True,
         compare_to: int | None = None,
         numbers=None,
+        mark_in_progress: bool = False,
     ) -> ExportResult:
+        """Write the HTML file. With ``mark_in_progress`` the exported items whose status is
+        Aberto/Em análise/Aprovado move to "Em desenvolvimento" (one revision each, after the
+        document is rendered: the file shows the list as it was exported). Only for the
+        latest revision; the status changes and the file are all or nothing."""
         project = self.projects.require(project_code)
+        latest = self.items.latest_revision(project.id)
+        if mark_in_progress and rev is not None and rev != latest:
+            raise ValidationError(
+                "Só é possível marcar os itens como \"Em desenvolvimento\" ao exportar a "
+                f"última revisão (Rev. {latest})."
+            )
         html, rev, rev_date = self.html(project, rev, changes, compare_to, numbers)
         day = rev_date[:10]
         folder = Path(out_dir) if out_dir else self.settings.export_dir
-        folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"giano_{project.code}_rev{rev}_{day}.html"
-        path.write_text(html, encoding="utf-8")
-        return ExportResult(path, html, f"Rev. {rev} exportada para {path}")
+        marked: list[str] = []
+        with self.items.db.transaction():
+            if mark_in_progress:
+                keys = selection_keys(numbers)
+                for v in self.items.list_items(project.id, rev, archived=False):
+                    if (keys is None or v.key in keys) and v.data.status in MARKABLE:
+                        self.items.set_status(v.item_id, ItemStatus.IN_PROGRESS)
+                        marked.append(v.code)
+            # Written inside the transaction: if the file fails, no status changes.
+            folder.mkdir(parents=True, exist_ok=True)
+            path.write_text(html, encoding="utf-8")
+        summary = f"Rev. {rev} exportada para {path}"
+        if mark_in_progress:
+            summary += (
+                f"; {len(marked)} itens marcados como Em desenvolvimento"
+                + (f" ({', '.join(marked)})" if marked else "")
+            )
+        return ExportResult(path, html, summary, tuple(marked))

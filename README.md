@@ -111,7 +111,7 @@ Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto se
 giano nota "Reunião com o comercial" --projeto MERC   # abre o editor de anotação
 giano nota "Ideia" --texto "corpo da anotação"         # cria sem abrir o editor
 giano export claude --projeto MERC [--desde 2026-01-01] [--todas]
-giano export html --projeto MERC [--rev 9] [--itens 1,3-5,33.1] [--sem-alteracoes]
+giano export html --projeto MERC [--rev 9] [--itens 1,3-5,33.1] [--sem-alteracoes] [--em-desenvolvimento]
 giano projetos | giano revisoes -p MERC | giano diff -p MERC 3 [9]
 giano itens -p MERC [--arquivados]
 giano item novo "Título" -p MERC [--tipo ajuste] [--prioridade alta] [-d 2] [--status aprovado] \n    [--tags "a, b"] [--corpo "texto" | --corpo - < corpo.md]

@@ -194,3 +194,108 @@ def test_tui_html_export_only_filtered_button(g, project, five, tmp_path):
 
     asyncio.run(scenario())
     assert not list((tmp_path / "exports").glob("*.html"))
+
+
+# ---------------------------------------------------------------- mark "Em desenvolvimento"
+
+
+def _statuses(g, project):
+    return {v.number: v.data.status for v in g.items.list_items(project.id)}
+
+
+def test_html_mark_in_progress(g, project, five):
+    g.items.set_status(five[3].item_id, ItemStatus.DONE)          # rev 8: MERC-4
+    g.items.set_status(five[4].item_id, ItemStatus.IN_PROGRESS)   # rev 9: MERC-5
+    g.items.set_status(five[1].item_id, ItemStatus.APPROVED)      # rev 10: MERC-2
+    r = g.exports.export_html("MERC", numbers={1, 2, 4, 5}, mark_in_progress=True)
+    assert r.marked == ("MERC-1", "MERC-2")
+    assert "2 itens marcados como Em desenvolvimento (MERC-1, MERC-2)" in r.summary
+    assert r.path.name.startswith("giano_MERC_rev10_")
+    assert "Em desenvolvimento" not in r.content.split("MERC-2")[1].split("MERC-4")[0]
+    assert _statuses(g, project) == {
+        1: ItemStatus.IN_PROGRESS, 2: ItemStatus.IN_PROGRESS, 3: ItemStatus.OPEN,
+        4: ItemStatus.DONE, 5: ItemStatus.IN_PROGRESS,
+    }
+    assert g.items.latest_revision(project.id) == 12  # one revision per marked item
+    # nothing left to mark: no new revision
+    again = g.exports.export_html("MERC", numbers={1, 2}, mark_in_progress=True)
+    assert again.marked == () and g.items.latest_revision(project.id) == 12
+
+
+def test_html_mark_in_progress_all_items(g, project, five):
+    r = g.exports.export_html("MERC", mark_in_progress=True)
+    assert r.marked == tuple(f"MERC-{n}" for n in range(1, 6))
+    assert set(_statuses(g, project).values()) == {ItemStatus.IN_PROGRESS}
+
+
+def test_html_mark_in_progress_only_latest_revision(g, project, five, tmp_path):
+    with pytest.raises(ValidationError, match="última revisão"):
+        g.exports.export_html("MERC", rev=5, out_dir=tmp_path / "old", mark_in_progress=True)
+    assert not (tmp_path / "old").exists()
+    assert g.exports.export_html("MERC", rev=7, mark_in_progress=True).marked  # 7 = latest
+
+
+def test_html_mark_in_progress_rolls_back_if_file_fails(g, project, five, tmp_path):
+    blocker = tmp_path / "not-a-folder"
+    blocker.write_text("x", encoding="utf-8")
+    with pytest.raises(OSError):
+        g.exports.export_html("MERC", out_dir=blocker, mark_in_progress=True)
+    assert g.items.latest_revision(project.id) == 7
+    assert set(_statuses(g, project).values()) == {ItemStatus.OPEN}
+
+
+def test_cli_em_desenvolvimento(g, project, five, tmp_path):
+    from typer.testing import CliRunner
+
+    from giano.cli import app
+
+    res = CliRunner().invoke(app, ["--db", g.db_path, "export", "html", "-p", "MERC",
+                                   "--itens", "2-3", "-o", str(tmp_path / "cli"),
+                                   "--em-desenvolvimento"])
+    assert res.exit_code == 0, res.output
+    assert "MERC-2, MERC-3" in res.output
+    s = _statuses(g, project)
+    assert s[2] == s[3] == ItemStatus.IN_PROGRESS and s[1] == ItemStatus.OPEN
+
+
+def test_tui_html_export_mark_in_progress(g, project, five, tmp_path):
+    from textual.widgets import Checkbox
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            await pilot.press("x")
+            await pilot.pause()
+            dialog = app.screen
+            assert dialog.query_one("#export-mark", Checkbox).value is False  # off by default
+            sl = dialog.query_one(SelectionList)
+            sl.deselect((3, 0))
+            dialog.query_one("#export-mark", Checkbox).value = True
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            assert isinstance(app.screen, MainScreen)
+            assert app.screen.latest_rev == 11  # list reloaded after the status changes
+
+    asyncio.run(scenario())
+    assert len(list((tmp_path / "exports").glob("giano_MERC_rev7_*.html"))) == 1
+    s = _statuses(g, project)
+    assert s[3] == ItemStatus.OPEN
+    assert all(s[n] == ItemStatus.IN_PROGRESS for n in (1, 2, 4, 5))
+
+
+def test_tui_html_export_old_revision_has_no_mark_option(g, project, five):
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            main.view_rev = 5
+            main.reload_items()
+            await pilot.press("x")
+            await pilot.pause()
+            assert isinstance(app.screen, HtmlExportDialog)
+            assert not app.screen.query("#export-mark")
+            await pilot.press("escape")
+
+    asyncio.run(scenario())

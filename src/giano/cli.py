@@ -183,12 +183,23 @@ def export_html(
             help="Itens a incluir, ex.: 1,3-5 ou 33.1 para um adendo (padrão: todos).",
         ),
     ] = None,
+    em_desenvolvimento: Annotated[
+        bool,
+        typer.Option(
+            "--em-desenvolvimento",
+            help="Marca os itens exportados como 'Em desenvolvimento' (exceto concluídos e "
+            "descartados; só na última revisão).",
+        ),
+    ] = False,
 ) -> None:
     """Gera um HTML autocontido da lista de um projeto numa revisão."""
     g = _giano(ctx)
     try:
         numbers = parse_item_keys(itens) if itens else None
-        result = g.exports.export_html(projeto, rev, saida, alteracoes, comparar_com, numbers)
+        result = g.exports.export_html(
+            projeto, rev, saida, alteracoes, comparar_com, numbers,
+            mark_in_progress=em_desenvolvimento,
+        )
     except ValidationError as exc:
         _fail(str(exc))
         return

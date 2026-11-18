@@ -332,6 +332,7 @@ class SettingsScreen(ModalScreen[None]):
 class HtmlExportOptions:
     numbers: frozenset[tuple[int, int]] | None  # item keys (number, addendum); None = all
     changes: bool
+    mark_in_progress: bool = False
 
 
 class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
@@ -344,13 +345,17 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
         Binding("ctrl+u", "select_none", "Nenhum", priority=True),
     ]
 
-    def __init__(self, title: str, items: list, filtered: set[int] | None = None):
+    def __init__(
+        self, title: str, items: list, filtered: set[int] | None = None, can_mark: bool = True
+    ):
         """``items``: ItemViews in display order; ``filtered``: keys (``ItemView.key``)
-        visible under the current filter (offers the "só os filtrados" shortcut), or None."""
+        visible under the current filter (offers the "só os filtrados" shortcut), or None.
+        ``can_mark``: offer "marcar como Em desenvolvimento" (only on the latest revision)."""
         super().__init__()
         self.title_text = title
         self.items = items
         self.filtered = filtered
+        self.can_mark = can_mark
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="dialog wide"):
@@ -364,6 +369,12 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
             )
             yield Static("", id="export-count", classes="muted", markup=False)
             yield Checkbox("Incluir a seção \"Alterações nesta revisão\"", True, id="export-changes")
+            if self.can_mark:
+                yield Checkbox(
+                    "Marcar os itens selecionados como \"Em desenvolvimento\" "
+                    "(exceto concluídos e descartados)",
+                    False, id="export-mark",
+                )
             with Horizontal(classes="buttons"):
                 yield Button("Exportar", variant="primary", id="export")
                 yield Button("Todos", id="all")
@@ -416,6 +427,7 @@ class HtmlExportDialog(ModalScreen[HtmlExportOptions | None]):
             HtmlExportOptions(
                 None if selected == all_keys else selected,
                 self.query_one("#export-changes", Checkbox).value,
+                self.can_mark and self.query_one("#export-mark", Checkbox).value,
             )
         )
 

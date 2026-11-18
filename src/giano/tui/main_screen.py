@@ -540,19 +540,28 @@ class MainScreen(Screen):
                 return
             try:
                 result = self.app.giano.exports.export_html(
-                    project.code, rev, changes=opts.changes, numbers=opts.numbers
+                    project.code, rev, changes=opts.changes, numbers=opts.numbers,
+                    mark_in_progress=opts.mark_in_progress,
                 )
             except (ValidationError, OSError) as exc:
                 self.notify(str(exc), severity="error", title="Falha na exportação")
                 return
             n = len(opts.numbers) if opts.numbers is not None else len(self.items)
-            self.notify(str(result.path), title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
+            message = str(result.path)
+            if opts.mark_in_progress:
+                message += (
+                    f"\n{len(result.marked)} itens marcados como Em desenvolvimento"
+                    + (f": {', '.join(result.marked)}" if result.marked else ".")
+                )
+                if result.marked:
+                    self.reload_items()
+            self.notify(message, title=f"HTML exportado (Rev. {shown_rev}, {n} itens)",
                         timeout=8)
 
         self.app.push_screen(
             HtmlExportDialog(
                 f"Exportar HTML — {project.code}, Rev. {shown_rev}: escolha os itens",
-                ordered, filtered,
+                ordered, filtered, can_mark=rev is None,
             ),
             run,
         )

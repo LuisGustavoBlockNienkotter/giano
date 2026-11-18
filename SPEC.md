@@ -127,6 +127,12 @@ numa conversa com o Claude e analisar as anotações à luz do estado do projeto
   - seção opcional "Alterações nesta revisão"
 - Nome do arquivo: `giano_<SIGLA>_rev<N>_<AAAA-MM-DD>.html`, numa pasta de exportação
   configurável.
+- Opção "marcar como Em desenvolvimento" (desmarcada por padrão; CLI
+  `--em-desenvolvimento`): ao exportar a última revisão, os itens selecionados com status
+  Aberto, Em análise ou Aprovado passam a "Em desenvolvimento" (uma revisão por item;
+  concluídos, descartados e os que já estão em desenvolvimento ficam como estão). O
+  arquivo mostra a lista como estava antes da mudança. Se o arquivo não puder ser
+  gravado, nenhum status muda.
 
 ## Interface (TUI)
 - Barra lateral com os projetos; área principal com a tabela de itens (ordenável e
