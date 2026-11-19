@@ -391,3 +391,109 @@ def test_tui_quick_status_same_status_does_nothing(g, project):
 
     run(scenario())
     assert g.items.latest_revision(project.id) == 1
+
+
+# ---------------------------------------------------------------- multi-selection
+
+
+def _codes(main):
+    return [v.code for v in main.selected_items()]
+
+
+def test_tui_multi_selection_keyboard_and_batch_status(g, project):
+    from tests.conftest import make
+    from giano.tui.dialogs import ChoiceDialog
+
+    for title in "ABCDE":
+        g.items.create(project.id, make(title))
+    g.items.set_status(g.items.get_by_code("MERC-5").item_id, ItemStatus.APPROVED)  # rev 6
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            main.sort_column = "id"
+            main.reload_items()
+            table = main.query_one("#items", DataTable)
+            table.move_cursor(row=1)
+            await pilot.press("shift+down", "shift+down")  # MERC-2..4
+            await pilot.pause()
+            assert _codes(main) == ["MERC-2", "MERC-3", "MERC-4"]
+            assert str(table.get_row_at(1)[0]) == "●" and str(table.get_row_at(0)[0]) == " "
+            assert "3 selecionados" in str(main.query_one("#filterbar").render())
+            await pilot.press("shift+up")  # range shrinks back toward the anchor
+            await pilot.pause()
+            assert _codes(main) == ["MERC-2", "MERC-3"]
+            table.move_cursor(row=4)  # a plain move keeps the selection
+            await pilot.press("space")
+            await pilot.pause()
+            assert _codes(main) == ["MERC-2", "MERC-3", "MERC-5"]
+            await pilot.press("s")
+            await pilot.pause()
+            assert isinstance(app.screen, ChoiceDialog)
+            assert "3 itens selecionados" in str(app.screen.query_one(".dialog-title").render())
+            app.screen.dismiss(ItemStatus.APPROVED)
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            for _ in range(5):
+                await pilot.pause()
+            assert app.screen is main
+            assert _codes(main) == []  # the batch consumed the selection
+            notes = [n.message for n in app._notifications]
+            assert "✓ 2 itens: status → Aprovado (Rev. 7–8): MERC-2, MERC-3." in notes
+            assert str(table.get_row_at(1)[0]) == " "
+            await pilot.press("ctrl+a")
+            await pilot.pause()
+            assert len(_codes(main)) == 5
+            await pilot.press("escape")
+            await pilot.pause()
+            assert _codes(main) == []
+
+    run(scenario())
+    statuses = {v.code: v.data.status for v in g.items.list_items(project.id)}
+    assert statuses == {"MERC-1": ItemStatus.OPEN, "MERC-2": ItemStatus.APPROVED,
+                        "MERC-3": ItemStatus.APPROVED, "MERC-4": ItemStatus.OPEN,
+                        "MERC-5": ItemStatus.APPROVED}
+    assert g.items.latest_revision(project.id) == 8
+
+
+def test_tui_multi_selection_with_ctrl_and_shift_click(g, project):
+    from tests.conftest import make
+
+    for title in "ABCDE":
+        g.items.create(project.id, make(title))
+
+    async def scenario():
+        app = GianoApp(g)
+        async with app.run_test(size=SIZE) as pilot:
+            await pilot.pause()
+            main = app.screen
+            main.sort_column = "id"
+            main.reload_items()
+            # Row i is at y = i + 1 (the header is the first line).
+            await pilot.click("#items", offset=(10, 1), control=True)  # MERC-1
+            await pilot.click("#items", offset=(10, 3), control=True)  # MERC-3
+            await pilot.pause()
+            assert _codes(main) == ["MERC-1", "MERC-3"]
+            assert app.screen is main  # ctrl+click never opens the editor
+            await pilot.click("#items", offset=(10, 5), shift=True)  # range from MERC-3
+            await pilot.pause()
+            assert _codes(main) == ["MERC-3", "MERC-4", "MERC-5"]
+            await pilot.click("#items", offset=(10, 1), shift=True, control=True)  # adds 1..3
+            await pilot.pause()
+            assert len(_codes(main)) == 5
+            await pilot.click("#items", offset=(10, 4), control=True)  # toggles MERC-4 off
+            await pilot.pause()
+            assert _codes(main) == ["MERC-1", "MERC-2", "MERC-3", "MERC-5"]
+            await pilot.click("#items", offset=(10, 2))  # plain click: cursor only
+            await pilot.pause()
+            assert len(_codes(main)) == 4 and app.screen is main
+            await pilot.press("v")  # another list (the archive): selection cleared
+            await pilot.pause()
+            await pilot.press("v")
+            await pilot.pause()
+            assert _codes(main) == []
+
+    run(scenario())
+    assert g.items.latest_revision(project.id) == 5

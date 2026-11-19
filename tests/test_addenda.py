@@ -310,7 +310,7 @@ def test_tui_new_addendum(g, project, original):
             screen.filters = replace(screen.filters, hide_closed=True)
             screen.reload_items()
             table = screen.query_one("#items", DataTable)
-            assert [str(table.get_row_at(i)[0]) for i in range(table.row_count)] == ["MERC-1.1"]
+            assert [str(table.get_row_at(i)[1]) for i in range(table.row_count)] == ["MERC-1.1"]  # [0] = mark
             preview = screen.query_one("#preview", Markdown)
             assert "Adendo" in preview.source and "Cálculo de frete" in preview.source
 

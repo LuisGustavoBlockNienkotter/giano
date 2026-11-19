@@ -175,3 +175,37 @@ def test_migrations_are_idempotent(tmp_path):
     assert db.query_one("SELECT MAX(version) FROM schema_version")[0] >= 1
     assert db.query_one("SELECT COUNT(*) FROM schema_version")[0] == len(MIGRATIONS)
     db.close()
+
+
+def test_set_status_many_one_revision_per_changed_item(g, project):
+    a = g.items.create(project.id, make("A"))
+    b = g.items.create(project.id, make("B", status=ItemStatus.IN_PROGRESS))
+    c = g.items.create(project.id, make("C"))
+    seen = []
+    changed = g.items.set_status_many(
+        [a.item_id, b.item_id, c.item_id, a.item_id], ItemStatus.IN_PROGRESS,
+        progress=lambda d, t: seen.append((d, t)),
+    )
+    assert [v.code for v in changed] == ["MERC-1", "MERC-3"]  # B already was; A once
+    assert [v.rev_start for v in changed] == [4, 5]
+    assert seen == [(0, 2), (1, 2), (2, 2)]
+    assert [r.summary for r in g.items.revisions(project.id)[:2]] == [
+        "MERC-3: status Aberto → Em desenvolvimento",
+        "MERC-1: status Aberto → Em desenvolvimento",
+    ]
+    assert {v.data.status for v in g.items.list_items(project.id)} == {ItemStatus.IN_PROGRESS}
+    # Nothing to change: no revision.
+    assert g.items.set_status_many([a.item_id, b.item_id], ItemStatus.IN_PROGRESS) == []
+    assert g.items.latest_revision(project.id) == 5
+
+
+def test_set_status_many_is_all_or_nothing(g, project):
+    a = g.items.create(project.id, make("A"))
+    b = g.items.create(project.id, make("B"))
+    g.items.archive(b.item_id)  # rev 3
+    with pytest.raises(ValidationError, match="MERC-2 está arquivado"):
+        g.items.set_status_many([a.item_id, b.item_id], ItemStatus.DONE)
+    with pytest.raises(ValidationError):
+        g.items.set_status_many([a.item_id, 999], ItemStatus.DONE)
+    assert g.items.get(a.item_id).data.status == ItemStatus.OPEN
+    assert g.items.latest_revision(project.id) == 3

@@ -74,7 +74,9 @@ para abrir o banco.
 | `d` | novo adendo do item selecionado | | |
 | `e` / enter | editar item | `l` | voltar à última revisão |
 | `del` | excluir (com confirmação) | `x` | exportar HTML da revisão exibida (escolhendo os itens) |
-| `s` | mudar status | `c` | exportar para o Claude |
+| `s` | mudar status (com itens selecionados: de todos) | `c` | exportar para o Claude |
+| `espaço` / ctrl+clique | selecionar ou desmarcar o item | `shift+↑↓` / shift+clique | selecionar um intervalo |
+| `ctrl+a` | selecionar todos os itens visíveis | `esc` | limpar a seleção |
 | `z` | arquivar item (no arquivo: restaurar) | `v` | alternar lista / arquivo |
 | `/` | buscar | `a` | anotações |
 | `f` | filtros (dificuldade aceita faixas: `1,3-5`; por padrão esconde concluídos e descartados) | `ctrl+n` | anotação rápida (qualquer tela) |
@@ -85,6 +87,14 @@ para abrir o banco.
 `F5` recarrega o que foi alterado fora desta janela (outro Giano aberto, `giano nota`, um
 script). O que você está editando nunca é descartado: se o item ou a anotação foi alterado
 fora e você tem alterações não salvas, o Giano avisa e pede confirmação antes de substituir.
+
+**Seleção múltipla**: marque vários itens com `espaço` ou ctrl+clique (alterna o item) e
+shift+clique ou `shift+↑↓` (intervalo a partir do último item marcado; ctrl+shift+clique
+soma o intervalo à seleção). Os itens marcados ficam com `●` e fundo destacado; mover o
+cursor não desfaz a seleção. Com itens selecionados, `s` muda o status de todos de uma
+vez: cada item que muda gera a sua revisão, e se algum falhar nenhum muda. Alguns
+terminais (como o Windows Terminal) usam o shift+clique para selecionar texto: neles, use
+`shift+↑↓`.
 
 **Arquivo**: itens que você não quer mais ver (ex.: concluídos há tempos) podem ser
 arquivados com `z`. Eles saem da lista normal e das exportações (HTML e Claude), mas ficam

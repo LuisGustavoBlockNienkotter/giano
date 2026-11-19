@@ -29,7 +29,7 @@ from giano.tui.notes import NotesScreen
 from giano.tui.projects import ProjectEditor, ProjectsScreen
 from giano.tui.revisions import RevisionsScreen
 from giano.tui.search import SearchScreen
-from giano.tui.widgets import plain
+from giano.tui.widgets import MARK_COLUMN, ItemTable, mark_cell, plain
 
 T = TypeVar("T")
 
@@ -110,6 +110,9 @@ class MainScreen(Screen):
         # Set when a background change already reloaded the list: the resume that follows
         # (its ProgressDialog closing) skips the reload instead of repeating it.
         self._fresh_after_busy = False
+        # (project, archive?, revision) of the rows shown: the multi-selection only
+        # survives a reload of the same list.
+        self._list_context: tuple | None = None
 
     # -- layout ---------------------------------------------------------------
 
@@ -121,13 +124,14 @@ class MainScreen(Screen):
                 yield OptionList(id="project-list")
             with Vertical(id="content"):
                 yield Static(id="filterbar", markup=False)
-                yield DataTable(id="items", cursor_type="row", zebra_stripes=True)
+                yield ItemTable(id="items", zebra_stripes=True)
                 with VerticalScroll(id="preview-scroll"):
                     yield Markdown(id="preview")
         yield Footer(compact=True, show_command_palette=False)
 
     def on_mount(self) -> None:
         table = self.query_one("#items", DataTable)
+        table.add_column(" ", key=MARK_COLUMN, width=1)  # ● = selected (multi-selection)
         for key, label in COLUMNS:
             table.add_column(label, key=key)
         self.reload_projects()
@@ -207,7 +211,7 @@ class MainScreen(Screen):
     ) -> None:
         """Reload the table; ``data`` = what :meth:`fetch_items` returned (e.g. in a
         worker), otherwise it is fetched now."""
-        table = self.query_one("#items", DataTable)
+        table = self.query_one("#items", ItemTable)
         if self.project is None:
             self.items, self.all_items, self.latest_rev = [], [], 0
         else:
@@ -223,12 +227,17 @@ class MainScreen(Screen):
             key=SORT_KEYS[self.sort_column],
             reverse=self.sort_reverse,
         )
+        context = (self.project.id if self.project else None, self.show_archived, self.view_rev)
+        if context != self._list_context:
+            self._list_context = context
+            table.selected.clear()
         with table.prevent(DataTable.RowHighlighted):
             table.clear()
             for v in visible:
                 d = v.data
                 closed = d.status in (ItemStatus.DONE, ItemStatus.DISCARDED)
                 table.add_row(
+                    mark_cell(str(v.item_id) in table.selected),
                     plain(v.code),
                     plain(d.title, "dim" if closed else ""),
                     plain(d.type.label),
@@ -238,6 +247,7 @@ class MainScreen(Screen):
                     plain(", ".join(d.tags)),
                     key=str(v.item_id),
                 )
+            table.keep_existing()
         if select_item_id is not None and any(v.item_id == select_item_id for v in visible):
             table.move_cursor(row=table.get_row_index(str(select_item_id)))
         self._update_bars(len(visible))
@@ -271,6 +281,9 @@ class MainScreen(Screen):
         bar = f"{shown} de {len(self.items)} {noun} · ordem: {sort_label} {arrow} (o ou clique no cabeçalho)"
         if self.current_filters.active:
             bar += f" · filtros: {self.current_filters.describe()} (f para alterar)"
+        selected = len(self.query_one("#items", ItemTable).selected)
+        if selected:
+            bar = (f"{selected} selecionados (s: status em lote · esc: limpar) · " + bar)
         self.query_one("#filterbar", Static).update(bar)
 
     @property
@@ -284,6 +297,12 @@ class MainScreen(Screen):
             self.archive_filters = value
         else:
             self.filters = value
+
+    def selected_items(self) -> list[ItemView]:
+        """The items marked with Ctrl/Shift/Espaço (multi-selection), in table order."""
+        table = self.query_one("#items", ItemTable)
+        by_id = {str(v.item_id): v for v in self.items}
+        return [by_id[k] for k in table.selected_in_order() if k in by_id]
 
     def selected_item(self) -> ItemView | None:
         table = self.query_one("#items", DataTable)
@@ -326,6 +345,9 @@ class MainScreen(Screen):
 
     def on_data_table_row_highlighted(self, _: DataTable.RowHighlighted) -> None:
         self.update_preview()
+
+    def on_item_table_selection_changed(self, _: ItemTable.SelectionChanged) -> None:
+        self._update_bars(self.query_one("#items", DataTable).row_count)
 
     def on_data_table_row_selected(self, _: DataTable.RowSelected) -> None:
         if not self.read_only and not self.show_archived:
@@ -490,6 +512,9 @@ class MainScreen(Screen):
             self.notify("Nenhum item arquivado nesta revisão.")
 
     def action_quick_status(self) -> None:
+        if self.selected_items():
+            self._batch_status()
+            return
         v = self.selected_item()
         if v is None or not self._guard_not_archive() or not self._guard_editable():
             return
@@ -512,6 +537,48 @@ class MainScreen(Screen):
 
         self.app.push_screen(
             ChoiceDialog(f"Status de {v.code}", [(s.label, s) for s in ItemStatus], v.data.status),
+            apply,
+        )
+
+    def _batch_status(self) -> None:
+        """``s`` with several items selected: one status for all of them (one revision per
+        item that changes, all or nothing)."""
+        chosen = self.selected_items()
+        if not self._guard_not_archive() or not self._guard_editable():
+            return
+        statuses = {v.data.status for v in chosen}
+        common = next(iter(statuses)) if len(statuses) == 1 else None
+
+        def apply(status) -> None:
+            if status is None:
+                return
+            todo = [v for v in chosen if v.data.status != status]
+            if not todo:
+                self.notify(f"Os {len(chosen)} itens selecionados já estão em {status.label}.")
+                return
+            codes = ", ".join(v.code for v in todo)
+
+            def work(report):
+                changed = self.app.giano.items.set_status_many(
+                    [v.item_id for v in todo], status,
+                    progress=lambda d, t: report(d, t, f"itens → {status.label}"),
+                )
+                return changed, self.fetch_items()
+
+            def finish(outcome) -> None:
+                changed, data = outcome
+                self._fresh_after_busy = True  # the resume after the dialog closes
+                self.query_one("#items", ItemTable).selected.clear()  # the batch is done
+                self.reload_items(data=data)
+                revs = sorted(v.rev_start for v in changed)
+                where = (f"Rev. {revs[0]}" if len(revs) == 1 else f"Rev. {revs[0]}–{revs[-1]}")
+                self._ok(f"{len(changed)} itens: status → {status.label} ({where}): {codes}.")
+
+            self.app.run_busy(f"{len(todo)} itens: status → {status.label}", work, finish)
+
+        self.app.push_screen(
+            ChoiceDialog(f"Status de {len(chosen)} itens selecionados",
+                         [(s.label, s) for s in ItemStatus], common),
             apply,
         )
 

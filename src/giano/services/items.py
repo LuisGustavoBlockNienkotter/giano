@@ -228,6 +228,40 @@ class ItemService:
         current = self._require(item_id)
         return self.update(item_id, replace(current.data, status=status))
 
+    def set_status_many(
+        self,
+        item_ids: list[int],
+        status: ItemStatus,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> list[ItemView]:
+        """Change the status of several items: one revision per item that really changes
+        (items already in ``status`` are skipped), all in one transaction, so either every
+        item changes or none does. Returns the new views, in the order of ``item_ids``.
+
+        ``progress(done, total)`` is called before the first change and after each one
+        (``total`` = items that change): on Turso every change is several round trips."""
+        changed: list[ItemView] = []
+        with self.db.transaction():
+            todo = []
+            for item_id in dict.fromkeys(item_ids):
+                current = self._require(item_id)
+                if current.data.archived:
+                    raise ValidationError(
+                        f"{current.code} está arquivado: restaure-o para a lista antes de editar."
+                    )
+                if current.data.status != status:
+                    todo.append(current)
+            if progress:
+                progress(0, len(todo))
+            for current in todo:
+                # _save (not update) reuses the view just loaded: one query less per item.
+                new = self._save(current, replace(current.data, status=status).normalized())
+                if new is not None:
+                    changed.append(new)
+                if progress:
+                    progress(len(changed), len(todo))
+        return changed
+
     def set_priority(self, item_id: int, priority: Priority) -> ItemView | None:
         current = self._require(item_id)
         return self.update(item_id, replace(current.data, priority=priority))
