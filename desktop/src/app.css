@@ -63,6 +63,13 @@
 @utility btn-icon {
   @apply btn-ghost h-8 w-8 justify-center px-0;
 }
+/* Floating action bubbles (bottom-right of the items view). */
+@utility fab {
+  @apply btn h-10 w-10 justify-center rounded-full border border-zinc-200 bg-white px-0 text-zinc-700 shadow-lg shadow-zinc-900/10 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-black/40 dark:hover:bg-zinc-700;
+}
+@utility fab-primary {
+  @apply btn h-12 w-12 justify-center rounded-full bg-accent-600 px-0 text-white shadow-lg shadow-accent-900/25 hover:bg-accent-700;
+}
 @utility input {
   @apply h-8 w-full rounded-md border border-zinc-200 bg-white px-2.5 text-[13px] text-zinc-900 shadow-xs transition-colors outline-none placeholder:text-zinc-400 focus:border-accent-500 focus:ring-3 focus:ring-accent-500/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500;
 }

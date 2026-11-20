@@ -37,7 +37,7 @@
   } from "@lucide/svelte";
   import { store } from "../lib/state.svelte";
   import { api } from "../lib/api";
-  import { parseRanges, CLOSED, formatDate, plural } from "../lib/format";
+  import { parseRanges, CLOSED, plural } from "../lib/format";
   import { newItem, editItem, newAddendum, deleteItem, toggleArchive, setStatus } from "../lib/actions";
   import Badges, { PRIORITY_DOT, STATUS_DOT } from "../lib/components/Badges.svelte";
   import Menu from "../lib/components/Menu.svelte";
@@ -308,32 +308,7 @@
     {/if}
   </div>
 {:else}
-  <div class="flex h-full min-h-0 flex-col">
-    <!-- header -->
-    <header class="flex items-center gap-3 border-b border-zinc-200/80 px-5 py-3 dark:border-zinc-800">
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <h1 class="truncate font-display text-[17px] font-semibold">{pv.project.name}</h1>
-          <span class="code rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">{pv.project.code}</span>
-          {#if !pv.project.active}<span class="chip bg-zinc-200 text-zinc-600 dark:bg-zinc-800">Projeto arquivado</span>{/if}
-        </div>
-        <div class="mt-0.5 text-xs text-zinc-500">
-          Rev. {pv.rev}{pv.rev < pv.latest_rev ? ` de ${pv.latest_rev}` : ""}
-          {#if pv.revision}· {formatDate(pv.revision.created_at)}{/if}
-          · {plural(list.length, store.showArchive ? "item arquivado" : "item", store.showArchive ? "itens arquivados" : "itens")}
-        </div>
-      </div>
-      <button class="btn-ghost" onclick={() => (store.exportClaude = { noteIds: null })} title="Exportar para o Claude (C)">
-        <Sparkles size={14} /> Claude
-      </button>
-      <button class="btn-secondary" onclick={() => (store.exportHtml = true)} title="Exportar HTML (X)">
-        <FileCode2 size={14} /> Exportar HTML
-      </button>
-      <button class="btn-primary" onclick={newItem} disabled={store.readOnly || store.showArchive} title="Novo item (N)">
-        <Plus size={15} /> Novo item
-      </button>
-    </header>
-
+  <div class="relative flex h-full min-h-0 flex-col">
     {#if pv.rev < pv.latest_rev}
       <div class="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-2 text-[13px] text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
         <History size={15} />
@@ -411,7 +386,7 @@
             <button class="btn-ghost h-7 px-2" onclick={() => marked.clear()}>Limpar <span class="kbd">Esc</span></button>
           </div>
         {/if}
-        <div class="min-h-0 flex-1 overflow-auto">
+        <div class="min-h-0 flex-1 overflow-auto pb-16">
           <table class="w-full min-w-[600px] table-fixed border-separate border-spacing-0 text-[13px]">
             <thead class="sticky top-0 z-10 bg-zinc-50/95 backdrop-blur dark:bg-zinc-950/95">
               <tr>
@@ -528,6 +503,30 @@
           <div class="flex h-full items-center justify-center text-[13px] text-zinc-400">Nenhum item selecionado.</div>
         {/if}
       </section>
+    </div>
+
+    <!-- floating actions -->
+    <div class="pointer-events-none absolute right-5 bottom-11 z-20 flex items-center gap-2.5">
+      <button
+        class="fab pointer-events-auto"
+        onclick={() => (store.exportClaude = { noteIds: null })}
+        title="Exportar para o Claude (C)"
+        aria-label="Exportar para o Claude"
+      >
+        <Sparkles size={17} />
+      </button>
+      <button class="fab pointer-events-auto" onclick={() => (store.exportHtml = true)} title="Exportar HTML (X)" aria-label="Exportar HTML">
+        <FileCode2 size={17} />
+      </button>
+      <button
+        class="fab-primary pointer-events-auto"
+        onclick={newItem}
+        disabled={store.readOnly || store.showArchive}
+        title="Novo item (N)"
+        aria-label="Novo item"
+      >
+        <Plus size={22} />
+      </button>
     </div>
   </div>
 {/if}

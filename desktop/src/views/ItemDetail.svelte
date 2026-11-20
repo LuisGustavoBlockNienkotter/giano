@@ -84,7 +84,7 @@
     </div>
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+  <div class="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-24">
     {#if item.is_addendum}
       <div class="mb-5 rounded-lg border-l-3 border-orange-400 bg-orange-50/70 px-3.5 py-2.5 text-[13px] dark:bg-orange-500/10">
         <span class="font-medium text-orange-800 dark:text-orange-300">Adendo de</span>
