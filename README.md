@@ -137,6 +137,12 @@ Os comandos `giano item` não abrem a interface, então servem para scripts e pa
 registrar itens a partir de qualquer pasta. Tipo, prioridade e status aceitam o nome em
 português sem acento (`em-analise`, `critica`) ou o valor interno (`analysis`).
 
+## App para Windows (em desenvolvimento)
+
+A pasta [`desktop/`](desktop/README.md) tem a versão desktop: núcleo reescrito em Rust e
+interface em Tauri 2 + Svelte. Ela usa o mesmo banco e o mesmo `config.json` da TUI, então as
+duas funcionam lado a lado.
+
 ## Desenvolvimento
 
 ```bash

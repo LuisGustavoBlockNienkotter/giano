@@ -11,3 +11,9 @@ build/
 giano_*.html
 giano_*_claude_*.md
 .DS_Store
+
+# desktop (Tauri)
+desktop/node_modules/
+desktop/dist/
+desktop/target/
+desktop/src-tauri/gen/
