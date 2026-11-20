@@ -1,0 +1,112 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --color-accent-50: oklch(0.97 0.02 285);
+  --color-accent-100: oklch(0.94 0.04 285);
+  --color-accent-200: oklch(0.88 0.08 285);
+  --color-accent-300: oklch(0.80 0.12 285);
+  --color-accent-400: oklch(0.70 0.16 285);
+  --color-accent-500: oklch(0.61 0.20 285);
+  --color-accent-600: oklch(0.54 0.22 285);
+  --color-accent-700: oklch(0.47 0.21 285);
+  --color-accent-900: oklch(0.30 0.12 285);
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+    font-size: 14px;
+    overflow: hidden;
+    user-select: none;
+  }
+  input,
+  textarea,
+  .selectable {
+    user-select: text;
+  }
+  ::selection {
+    @apply bg-accent-200 dark:bg-accent-700/60;
+  }
+  *:focus-visible {
+    @apply outline-2 outline-offset-1 outline-accent-500;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, currentColor 22%, transparent) transparent;
+  }
+}
+
+@utility btn {
+  @apply inline-flex h-8 cursor-default items-center gap-1.5 rounded-md px-3 text-[13px] font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply btn bg-accent-600 text-white shadow-sm hover:bg-accent-700;
+}
+@utility btn-secondary {
+  @apply btn border border-zinc-200 bg-white text-zinc-800 shadow-xs hover:bg-zinc-50 dark:border-zinc-700/80 dark:bg-zinc-800/80 dark:text-zinc-100 dark:hover:bg-zinc-700/80;
+}
+@utility btn-ghost {
+  @apply btn text-zinc-600 hover:bg-zinc-200/60 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100;
+}
+@utility btn-danger {
+  @apply btn bg-red-600 text-white shadow-sm hover:bg-red-700;
+}
+@utility btn-icon {
+  @apply btn-ghost h-8 w-8 justify-center px-0;
+}
+@utility input {
+  @apply h-8 w-full rounded-md border border-zinc-200 bg-white px-2.5 text-[13px] text-zinc-900 shadow-xs transition-colors outline-none placeholder:text-zinc-400 focus:border-accent-500 focus:ring-3 focus:ring-accent-500/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500;
+}
+@utility field-label {
+  @apply mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400;
+}
+@utility card {
+  @apply rounded-xl border border-zinc-200/80 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900;
+}
+@utility kbd {
+  @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-zinc-200 bg-zinc-100 px-1 font-sans text-[10px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400;
+}
+@utility chip {
+  @apply inline-flex h-[22px] items-center gap-1 rounded-full px-2 text-[11.5px] font-medium whitespace-nowrap;
+}
+@utility code {
+  @apply font-mono text-[12px] tracking-tight text-zinc-500 dark:text-zinc-400;
+}
+
+textarea.input {
+  height: auto;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+/* Rendered Markdown (same renderer as the HTML export); used with `prose`. */
+.md {
+  --tw-prose-links: var(--color-accent-600);
+  user-select: text;
+}
+.md pre.highlight {
+  @apply rounded-lg border border-zinc-200 bg-zinc-50 text-[12.5px] leading-relaxed text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-200;
+}
+.md :not(pre) > code {
+  @apply rounded bg-zinc-100 px-1 py-0.5 font-normal dark:bg-zinc-800;
+}
+.md :not(pre) > code::before,
+.md :not(pre) > code::after {
+  content: none;
+}
+.md table {
+  font-size: 13px;
+}
+pre.highlight .hl-code {
+  background: transparent !important;
+}

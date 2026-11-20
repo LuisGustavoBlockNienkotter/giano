@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b7cf6"/>
+      <stop offset="1" stop-color="#5b3fd6"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <!-- Giano (Janus): two faces, past and future revisions -->
+  <path d="M512 232 C 360 232 252 352 252 512 C 252 672 360 792 512 792" fill="none" stroke="#ffffff" stroke-width="72" stroke-linecap="round"/>
+  <path d="M512 232 C 664 232 772 352 772 512 L 772 560 L 600 560" fill="none" stroke="#ffffff" stroke-opacity="0.72" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="512" y1="232" x2="512" y2="792" stroke="#ffffff" stroke-opacity="0.35" stroke-width="20" stroke-dasharray="28 36" stroke-linecap="round"/>
+</svg>

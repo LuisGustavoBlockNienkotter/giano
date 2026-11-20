@@ -55,6 +55,32 @@ tests/               pytest; test_tui.py drives the app with Textual's pilot. Th
                      (same adapter as Turso, no network). Config is isolated per test.
 ```
 
+## Desktop app (`desktop/`, Tauri 2 + Rust + Svelte 5)
+
+A separate Windows app; the Python TUI/CLI above keeps working unchanged. It shares the SAME
+database and `config.json` (same paths as `platformdirs`), so both can run side by side.
+
+```
+desktop/
+  crates/giano-core/   Rust port of domain.py + db/ + services/ (rusqlite bundled for local
+                       files, a small Hrana-over-HTTP client in db/remote.rs for Turso,
+                       pulldown-cmark + syntect for Markdown, minijinja for export.html.j2)
+    tests/             port of the pytest service tests (`cargo test -p giano-core`)
+  src-tauri/           Tauri app: commands.rs = thin async commands over giano-core
+                       (spawn_blocking, errors as {kind, message}, `progress` events)
+  src/                 Svelte 5 (runes) + Tailwind 4: lib/state.svelte.ts (global store),
+                       lib/api.ts (typed invoke), views/ (one file per screen/dialog)
+```
+
+- Commands (in `desktop/`): `npm run tauri dev`, `npm run tauri build`,
+  `cargo test -p giano-core`, `npm run check`.
+- Same rules as the Python core. Schema changes go to BOTH `db/migrations.py` and
+  `desktop/crates/giano-core/src/db/migrations.rs` with the same version number.
+- Rust SQL uses positional `?` / `?N` params (`params![...]`); `Database::transaction`
+  takes a closure (nestable); `Database::session` keeps one Turso stream.
+- The UI never formats domain labels itself: `meta` gives the enum labels; Markdown is
+  rendered by the `render_markdown` command (same renderer as the HTML export).
+
 ## Revision model (core invariant)
 
 - `items` = stable identity (project_id, number, source_note_id). Never updated/deleted.
