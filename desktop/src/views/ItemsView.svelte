@@ -271,6 +271,10 @@
       current: targets().length === 1 && targets()[0].data.status === s.value,
     })),
   );
+  let statusHeading = $derived.by(() => {
+    const t = targets();
+    return t.length === 1 ? `Mudar status de ${t[0].code}` : `Mudar status de ${t.length} itens`;
+  });
 </script>
 
 <svelte:window onkeydown={keydown} />
@@ -501,7 +505,7 @@
           </table>
         </div>
         <div class="flex items-center gap-3 border-t border-zinc-200/80 px-5 py-1.5 text-[11.5px] text-zinc-400 dark:border-zinc-800">
-          <Menu bind:this={statusMenu} items={statusItems} onselect={applyStatus} class="btn-ghost h-6 px-2 text-[11.5px]" disabled={store.readOnly || !targets().length} title="Mudar status (S)">
+          <Menu bind:this={statusMenu} items={statusItems} onselect={applyStatus} centered heading={statusHeading} class="btn-ghost h-6 px-2 text-[11.5px]" disabled={store.readOnly || !targets().length} title="Mudar status (S)">
             {#snippet trigger()}Status{markedItems.length ? ` (${markedItems.length})` : ""} <span class="kbd">S</span>{/snippet}
           </Menu>
           <span><span class="kbd">N</span> novo</span>
