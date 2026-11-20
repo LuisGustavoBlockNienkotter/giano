@@ -219,7 +219,7 @@ fn migrations_are_idempotent() {
 }
 
 #[test]
-fn set_status_many_one_revision_per_changed_item() {
+fn set_status_many_one_revision_for_the_block() {
     let g = env();
     let p = project(&g);
     let a = g.items().create(p.id, &make("A"), None).unwrap();
@@ -232,13 +232,20 @@ fn set_status_many_one_revision_per_changed_item() {
         .set_status_many(&[a.item_id, b.item_id, c.item_id, a.item_id], ItemStatus::InProgress, Some(&mut progress))
         .unwrap();
     assert_eq!(codes(&changed), ["MERC-1", "MERC-3"]); // B already was; A once
-    assert_eq!(changed.iter().map(|v| v.rev_start).collect::<Vec<_>>(), [4, 5]);
+    assert_eq!(changed.iter().map(|v| v.rev_start).collect::<Vec<_>>(), [4, 4]);
     assert_eq!(seen, [(0, 2), (1, 2), (2, 2)]);
-    let summaries: Vec<String> = g.items().revisions(p.id).unwrap().into_iter().take(2).map(|r| r.summary).collect();
-    assert_eq!(summaries, ["MERC-3: status Aberto → Em desenvolvimento", "MERC-1: status Aberto → Em desenvolvimento"]);
+    let rev = g.items().revisions(p.id).unwrap().remove(0);
+    assert_eq!((rev.number, rev.summary.as_str()), (4, "2 itens → Em desenvolvimento"));
+    let lines: Vec<&str> = rev.changes.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(lines, ["MERC-1: status Aberto → Em desenvolvimento", "MERC-3: status Aberto → Em desenvolvimento"]);
     // Nothing to change: no revision.
     assert!(g.items().set_status_many(&[a.item_id, b.item_id], ItemStatus::InProgress, None).unwrap().is_empty());
-    assert_eq!(g.items().latest_revision(p.id).unwrap(), 5);
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), 4);
+    // A single item changing keeps its own description.
+    g.items().set_status_many(&[a.item_id, c.item_id], ItemStatus::Done, None).unwrap();
+    assert_eq!(g.items().revisions(p.id).unwrap()[0].summary, "2 itens → Concluído");
+    g.items().set_status_many(&[a.item_id, b.item_id], ItemStatus::Done, None).unwrap();
+    assert_eq!(g.items().revisions(p.id).unwrap()[0].summary, "MERC-2: status Em desenvolvimento → Concluído");
 }
 
 #[test]

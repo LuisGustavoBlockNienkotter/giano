@@ -15,6 +15,7 @@ TABLES = (
     "notes",
     "items",
     "revisions",
+    "revision_changes",
     "item_versions",
     "tags",
     "item_version_tags",

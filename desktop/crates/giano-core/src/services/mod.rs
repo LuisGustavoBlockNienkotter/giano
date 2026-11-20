@@ -14,7 +14,7 @@ pub mod search;
 pub mod settings;
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chrono::NaiveDateTime;
 
@@ -37,11 +37,13 @@ pub fn iso(dt: NaiveDateTime) -> String {
 pub struct Giano {
     pub(crate) db: Database,
     pub(crate) clock: Clock,
+    /// The `ItemService::batch` in progress, if any (changes go into one revision).
+    pub(crate) batch: Mutex<Option<items::BatchState>>,
 }
 
 impl Giano {
     pub fn new(db: Database, clock: Clock) -> Self {
-        Giano { db, clock }
+        Giano { db, clock, batch: Mutex::new(None) }
     }
 
     /// Open a database (`target`) or the configured one (`GIANO_DB`, Turso, the local

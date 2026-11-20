@@ -249,7 +249,8 @@ def revisoes(
         return
     table = Table("Rev.", "Data", "Resumo")
     for r in g.items.revisions(p.id):
-        table.add_row(str(r.number), r.created_at.replace("T", " "), Text(r.summary))
+        number = f"{r.number} (aberta)" if r.is_open else str(r.number)
+        table.add_row(number, r.created_at.replace("T", " "), Text(_revision_text(r)))
     console.print(table)
 
 
@@ -589,8 +590,106 @@ def item_editar(
     if new is None:
         console.print(f"{v.code}: nenhuma alteração; nenhuma revisão criada.", markup=False)
     else:
-        summary = g.items.revision(new.project_id, new.rev_start).summary
-        console.print(f"Rev. {new.rev_start} — {summary}", markup=False, highlight=False)
+        console.print(_change_line(g, new), markup=False, highlight=False)
+
+
+def _change_line(g: Giano, view) -> str:
+    """``Rev. N — <the change of this item in revision N>`` (N may be an open revision)."""
+    latest = g.items.revision(view.project_id, g.items.latest_revision(view.project_id))
+    if latest and latest.is_open and view.rev_start != latest.number:
+        # Changed back to what it was before the open revision: it left the revision.
+        return f"{view.code}: voltou ao que era; fora da Rev. {latest.number} (aberta)."
+    rev = latest if latest and latest.number == view.rev_start else g.items.revision(
+        view.project_id, view.rev_start
+    )
+    if rev is None:
+        return f"Rev. {view.rev_start}"
+    line = next((c.summary for c in rev.changes if c.item_id == view.item_id), rev.title)
+    return f"Rev. {rev.number}{' (aberta)' if rev.is_open else ''} — {line}"
+
+
+revisao_app = typer.Typer(
+    help="Revisão aberta: junta um bloco de alterações numa revisão só.", no_args_is_help=True
+)
+app.add_typer(revisao_app, name="revisao")
+
+
+def _revision_text(r) -> str:
+    """Summary of a revision plus, for a block, one line per item changed."""
+    text = r.title
+    if len(r.changes) > 1:
+        text += "".join(f"\n  • {c.summary}" for c in r.changes)
+    return text
+
+
+@revisao_app.command("abrir")
+def revisao_abrir(
+    ctx: typer.Context,
+    projeto: Annotated[str, typer.Option("--projeto", "-p", help="Sigla do projeto.")],
+    resumo: Annotated[str, typer.Option("--resumo", help="Resumo da revisão (pode ficar para o fechamento).")] = "",
+) -> None:
+    """Abre uma revisão: todas as alterações seguintes no projeto (de qualquer tela ou
+    computador) entram nela, até `giano revisao fechar`."""
+    g = _giano(ctx)
+    try:
+        r = g.items.open_revision(g.projects.require(projeto).id, resumo)
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    console.print(f"Rev. {r.number} aberta.", markup=False, highlight=False)
+
+
+@revisao_app.command("fechar")
+def revisao_fechar(
+    ctx: typer.Context,
+    projeto: Annotated[str, typer.Option("--projeto", "-p", help="Sigla do projeto.")],
+    resumo: Annotated[
+        Optional[str], typer.Option("--resumo", help="Resumo da revisão (padrão: o da abertura).")
+    ] = None,
+) -> None:
+    """Fecha a revisão aberta. Sem alterações, ela é descartada."""
+    g = _giano(ctx)
+    try:
+        p = g.projects.require(projeto)
+        open_rev = g.items.get_open_revision(p.id)
+        r = g.items.close_revision(p.id, resumo)
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    if r is None:
+        number = open_rev.number if open_rev else "?"
+        console.print(f"Rev. {number} descartada: nenhuma alteração.", markup=False, highlight=False)
+    else:
+        n = len(r.changes)
+        console.print(
+            f"Rev. {r.number} fechada ({n} {'item alterado' if n == 1 else 'itens alterados'}): "
+            + _revision_text(r),
+            markup=False, highlight=False, soft_wrap=True,
+        )
+
+
+@revisao_app.command("ver")
+def revisao_ver(
+    ctx: typer.Context,
+    projeto: Annotated[str, typer.Option("--projeto", "-p", help="Sigla do projeto.")],
+    numero: Annotated[Optional[int], typer.Argument(help="Revisão (padrão: a última).")] = None,
+) -> None:
+    """Mostra uma revisão e as alterações de cada item."""
+    g = _giano(ctx)
+    try:
+        p = g.projects.require(projeto)
+        n = g.items.latest_revision(p.id) if numero is None else numero
+        r = g.items.revision(p.id, n)
+        if r is None:
+            raise ValidationError(f"Revisão {n} não existe.")
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    state = " (aberta)" if r.is_open else ""
+    console.print(f"Rev. {r.number}{state} — {r.created_at.replace('T', ' ')} — {r.title}",
+                  markup=False, highlight=False, soft_wrap=True)
+    for c in r.changes:
+        console.print(f"  • {c.summary}", markup=False, highlight=False, soft_wrap=True)
 
 
 @item_app.command("arquivar")

@@ -14,7 +14,7 @@ from giano.tui.app import GianoApp
 from giano.tui.dialogs import ConfirmDialog, FilterDialog
 from giano.tui.item_editor import ItemEditorScreen
 from giano.tui.main_screen import MainScreen
-from giano.tui.notes import NotesScreen
+from giano.tui.notes import NoteEditor, NotesScreen
 from tests.conftest import make
 
 SIZE = (160, 48)
@@ -106,6 +106,14 @@ def test_f5_notes_untouched_editor_shows_external_text(g, project, other):
             await pilot.pause()
             screen = app.screen
             assert isinstance(screen, NotesScreen)
+            # Let the editor settle first: its selects finish loading after mount, and
+            # until then it looks edited (F5 would save it over the external change).
+            editor = screen.query_one(NoteEditor)
+            for _ in range(40):
+                await pilot.pause(0.05)
+                if not editor.dirty:
+                    break
+            assert not editor.dirty
             other.notes.save(n.id, name="Reunião", note_date=n.note_date, project_id=project.id,
                              body="versão de fora", status=n.status)
             other.notes.create("Outra", project.id, "nova")

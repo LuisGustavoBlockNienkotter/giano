@@ -137,10 +137,31 @@ DROP TABLE items;
 ALTER TABLE items_new RENAME TO items;
 """
 
+# Revisions with several changes: a block of changes = one revision. ``revision_changes``
+# has one line per item changed by a revision (its net change, e.g. "MERC-3: status
+# Aberto → Em andamento"); it replaces ``revisions.item_id`` (kept, no longer written).
+# A project may have one OPEN revision (``is_open = 1``, always its latest): every change
+# goes into it until it is closed.
+V4 = """
+ALTER TABLE revisions
+    ADD COLUMN is_open INTEGER NOT NULL DEFAULT 0 CHECK (is_open IN (0, 1));
+CREATE UNIQUE INDEX revisions_one_open ON revisions (project_id) WHERE is_open = 1;
+CREATE TABLE revision_changes (
+    id          INTEGER PRIMARY KEY,
+    revision_id INTEGER NOT NULL REFERENCES revisions(id),
+    item_id     INTEGER NOT NULL REFERENCES items(id),
+    summary     TEXT    NOT NULL,
+    UNIQUE (revision_id, item_id)
+);
+INSERT INTO revision_changes (revision_id, item_id, summary)
+    SELECT id, item_id, summary FROM revisions WHERE item_id IS NOT NULL;
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, V1),
     (2, V2),
     (3, V3),
+    (4, V4),
 ]
 
 

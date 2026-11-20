@@ -441,7 +441,7 @@ def test_tui_multi_selection_keyboard_and_batch_status(g, project):
             assert app.screen is main
             assert _codes(main) == []  # the batch consumed the selection
             notes = [n.message for n in app._notifications]
-            assert "✓ 2 itens: status → Aprovado (Rev. 7–8): MERC-2, MERC-3." in notes
+            assert "✓ 2 itens: status → Aprovado (Rev. 7): MERC-2, MERC-3." in notes
             assert str(table.get_row_at(1)[0]) == " "
             await pilot.press("ctrl+a")
             await pilot.pause()
@@ -455,7 +455,7 @@ def test_tui_multi_selection_keyboard_and_batch_status(g, project):
     assert statuses == {"MERC-1": ItemStatus.OPEN, "MERC-2": ItemStatus.APPROVED,
                         "MERC-3": ItemStatus.APPROVED, "MERC-4": ItemStatus.OPEN,
                         "MERC-5": ItemStatus.APPROVED}
-    assert g.items.latest_revision(project.id) == 8
+    assert g.items.latest_revision(project.id) == 7  # the batch made one revision
 
 
 def test_tui_multi_selection_with_ctrl_and_shift_click(g, project):

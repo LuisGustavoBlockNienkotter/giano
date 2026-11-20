@@ -223,10 +223,16 @@ def test_html_mark_in_progress(g, project, five):
         1: ItemStatus.IN_PROGRESS, 2: ItemStatus.IN_PROGRESS, 3: ItemStatus.OPEN,
         4: ItemStatus.DONE, 5: ItemStatus.IN_PROGRESS,
     }
-    assert g.items.latest_revision(project.id) == 12  # one revision per marked item
+    assert g.items.latest_revision(project.id) == 11  # one revision for all the marked items
+    rev = g.items.revision(project.id, 11)
+    assert rev.summary == "Exportação: itens → Em desenvolvimento"
+    assert [c.summary for c in rev.changes] == [
+        "MERC-1: status Aberto → Em desenvolvimento",
+        "MERC-2: status Aprovado → Em desenvolvimento",
+    ]
     # nothing left to mark: no new revision
     again = g.exports.export_html("MERC", numbers={1, 2}, mark_in_progress=True)
-    assert again.marked == () and g.items.latest_revision(project.id) == 12
+    assert again.marked == () and g.items.latest_revision(project.id) == 11
 
 
 def test_html_mark_in_progress_all_items(g, project, five):
@@ -295,7 +301,7 @@ def test_tui_html_export_mark_in_progress(g, project, five, tmp_path, monkeypatc
             assert isinstance(app.screen, ProgressDialog) or seen  # progress shown meanwhile
             await _wait_export(app, pilot)
             assert isinstance(app.screen, MainScreen)
-            assert app.screen.latest_rev == 11  # list reloaded after the status changes
+            assert app.screen.latest_rev == 8  # list reloaded after the status changes (one revision)
 
     asyncio.run(scenario())
     assert seen == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]

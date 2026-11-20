@@ -7,9 +7,18 @@ summaries, diffs) live in :mod:`giano.services.items`.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 
 from giano.db.connection import Database
-from giano.domain import ItemData, ItemStatus, ItemType, ItemView, Priority, Revision
+from giano.domain import (
+    ItemData,
+    ItemStatus,
+    ItemType,
+    ItemView,
+    Priority,
+    Revision,
+    RevisionChange,
+)
 
 # ---------------------------------------------------------------------------
 # Revisions
@@ -21,31 +30,118 @@ def latest_revision_number(db: Database, project_id: int) -> int:
     return int(r[0] or 0)
 
 
+def last_revision(db: Database, project_id: int) -> tuple[int, int, bool] | None:
+    """``(id, number, is_open)`` of the latest revision (an open revision is always the
+    latest), or ``None`` for a project without revisions. One query."""
+    r = db.query_one(
+        "SELECT id, number, is_open FROM revisions WHERE project_id = ? ORDER BY number DESC LIMIT 1",
+        (project_id,),
+    )
+    return (int(r["id"]), int(r["number"]), bool(r["is_open"])) if r else None
+
+
 def insert_revision(
-    db: Database, project_id: int, number: int, now: str, summary: str, item_id: int | None
+    db: Database, project_id: int, number: int, now: str, summary: str, is_open: bool = False
+) -> int:
+    cur = db.execute(
+        """INSERT INTO revisions (project_id, number, created_at, summary, is_open)
+           VALUES (?, ?, ?, ?, ?)""",
+        (project_id, number, now, summary, int(is_open)),
+    )
+    return int(cur.lastrowid)
+
+
+def update_revision(
+    db: Database, revision_id: int, summary: str, is_open: bool, created_at: str | None = None
 ) -> None:
+    if created_at is None:
+        db.execute(
+            "UPDATE revisions SET summary = ?, is_open = ? WHERE id = ?",
+            (summary, int(is_open), revision_id),
+        )
+    else:
+        db.execute(
+            "UPDATE revisions SET summary = ?, is_open = ?, created_at = ? WHERE id = ?",
+            (summary, int(is_open), created_at, revision_id),
+        )
+
+
+def delete_revision(db: Database, revision_id: int) -> None:
+    """Only for a revision that ended up with no change (no version points to it)."""
+    db.execute("DELETE FROM revision_changes WHERE revision_id = ?", (revision_id,))
+    db.execute("DELETE FROM revisions WHERE id = ?", (revision_id,))
+
+
+def set_change(db: Database, revision_id: int, item_id: int, summary: str) -> None:
+    """Record (or replace) the net change of an item in a revision."""
     db.execute(
-        "INSERT INTO revisions (project_id, number, created_at, summary, item_id) VALUES (?, ?, ?, ?, ?)",
-        (project_id, number, now, summary, item_id),
+        """INSERT INTO revision_changes (revision_id, item_id, summary) VALUES (?, ?, ?)
+           ON CONFLICT (revision_id, item_id) DO UPDATE SET summary = excluded.summary""",
+        (revision_id, item_id, summary),
     )
 
 
-def _rev(r: sqlite3.Row) -> Revision:
-    return Revision(r["project_id"], r["number"], r["created_at"], r["summary"], r["item_id"])
+def delete_change(db: Database, revision_id: int, item_id: int) -> None:
+    db.execute(
+        "DELETE FROM revision_changes WHERE revision_id = ? AND item_id = ?",
+        (revision_id, item_id),
+    )
+
+
+def change_lines(db: Database, revision_id: int) -> list[str]:
+    rows = db.query(
+        "SELECT summary FROM revision_changes WHERE revision_id = ? ORDER BY id", (revision_id,)
+    )
+    return [r[0] for r in rows]
+
+
+_REVISION_COLUMNS = (
+    "r.id, r.project_id, r.number, r.created_at, r.summary, r.is_open, "
+    "c.item_id AS change_item, c.summary AS change_summary"
+)
+_REVISION_JOIN = "FROM revisions r LEFT JOIN revision_changes c ON c.revision_id = r.id"
+
+
+def _revisions(rows) -> list[Revision]:
+    """Group the rows of revisions LEFT JOIN changes (ordered by revision, then change)."""
+    out: list[Revision] = []
+    changes: dict[int, list[RevisionChange]] = {}
+    for r in rows:
+        if not out or out[-1].number != r["number"]:
+            out.append(
+                Revision(
+                    r["project_id"], r["number"], r["created_at"], r["summary"], bool(r["is_open"])
+                )
+            )
+            changes[r["number"]] = []
+        if r["change_item"] is not None:
+            changes[r["number"]].append(RevisionChange(r["change_item"], r["change_summary"]))
+    return [replace(rev, changes=tuple(changes[rev.number])) for rev in out]
 
 
 def list_revisions(db: Database, project_id: int) -> list[Revision]:
+    """All revisions of a project with their changes, newest first. One query."""
     rows = db.query(
-        "SELECT * FROM revisions WHERE project_id = ? ORDER BY number DESC", (project_id,)
+        f"SELECT {_REVISION_COLUMNS} {_REVISION_JOIN} WHERE r.project_id = ? "
+        "ORDER BY r.number DESC, c.id",
+        (project_id,),
     )
-    return [_rev(r) for r in rows]
+    return _revisions(rows)
 
 
 def get_revision(db: Database, project_id: int, number: int) -> Revision | None:
-    r = db.query_one(
-        "SELECT * FROM revisions WHERE project_id = ? AND number = ?", (project_id, number)
+    rows = db.query(
+        f"SELECT {_REVISION_COLUMNS} {_REVISION_JOIN} WHERE r.project_id = ? AND r.number = ? "
+        "ORDER BY c.id",
+        (project_id, number),
     )
-    return _rev(r) if r else None
+    revs = _revisions(rows)
+    return revs[0] if revs else None
+
+
+def get_open_revision(db: Database, project_id: int) -> Revision | None:
+    last = last_revision(db, project_id)
+    return get_revision(db, project_id, last[1]) if last and last[2] else None
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +222,21 @@ def close_version(db: Database, version_id: int, rev_end: int) -> None:
     )
     if cur.rowcount != 1:
         raise RuntimeError(f"Versão {version_id} não está vigente")
+
+
+def reopen_version(db: Database, version_id: int) -> None:
+    """Make a closed version current again (its successor, created in a revision that is
+    still collecting changes, was undone)."""
+    db.execute("UPDATE item_versions SET rev_end = NULL WHERE id = ?", (version_id,))
+
+
+def delete_version(db: Database, version_id: int) -> None:
+    """Remove a version created by a revision that is still collecting changes (an open
+    revision or a batch), when the same item changes again in that revision. Versions of
+    finished revisions are never deleted."""
+    db.execute("DELETE FROM item_version_tags WHERE version_id = ?", (version_id,))
+    db.execute("DELETE FROM item_fts WHERE rowid = ?", (version_id,))
+    db.execute("DELETE FROM item_versions WHERE id = ?", (version_id,))
 
 
 _SELECT = """

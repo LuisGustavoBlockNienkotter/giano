@@ -34,19 +34,7 @@
 <aside
   class="flex w-60 shrink-0 flex-col border-r border-zinc-200/80 bg-zinc-100/70 dark:border-zinc-800 dark:bg-zinc-900/60"
 >
-  <div class="flex items-center gap-2.5 px-4 pt-4 pb-3">
-    <div
-      class="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent-500 to-accent-700 font-display text-[15px] font-bold text-white shadow-sm"
-    >
-      G
-    </div>
-    <div class="min-w-0">
-      <div class="font-display text-[15px] leading-tight font-semibold">Giano</div>
-      <div class="text-[11px] text-zinc-500">Listas de melhorias</div>
-    </div>
-  </div>
-
-  <div class="px-3 pb-2">
+  <div class="px-3 pt-3 pb-2">
     <button
       class="flex h-8 w-full items-center gap-2 rounded-md border border-zinc-200 bg-white px-2.5 text-[13px] text-zinc-400 shadow-xs hover:border-zinc-300 dark:border-zinc-700/80 dark:bg-zinc-800/60 dark:hover:border-zinc-600"
       onclick={() => (store.searchOpen = true)}
@@ -71,7 +59,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="flex h-8 items-center gap-2 rounded-md px-2 text-[13px] {selected
+          class="clickable flex h-8 items-center gap-2 rounded-md px-2 text-[13px] {selected
             ? 'bg-white font-medium text-zinc-900 shadow-xs ring-1 ring-zinc-200/80 dark:bg-zinc-800 dark:text-white dark:ring-zinc-700'
             : 'text-zinc-700 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/70'}"
           onclick={() => {
@@ -83,7 +71,14 @@
             class="flex h-5 min-w-9 items-center justify-center rounded bg-zinc-200/80 px-1 font-mono text-[10px] font-semibold text-zinc-600 dark:bg-zinc-700/70 dark:text-zinc-300"
             >{p.code}</span
           >
-          <span class="min-w-0 flex-1 truncate">{p.name}</span>
+          <span class="flex min-w-0 flex-1 items-baseline gap-1">
+            <span class="truncate">{p.name}</span>
+            {#if store.pv?.project.id === p.id}
+              <span class="shrink-0 font-normal whitespace-nowrap text-zinc-400 dark:text-zinc-500"
+                >- rev. {store.pv.rev}</span
+              >
+            {/if}
+          </span>
           <button
             class="hidden h-6 w-6 items-center justify-center rounded text-zinc-400 group-hover:flex hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
             title="Editar projeto"
@@ -152,12 +147,15 @@
     >
       <Settings size={14} /> Configurações
     </button>
-    <div class="mt-1 flex items-center gap-1.5 px-2 py-1 text-[11px] text-zinc-400" title={store.status?.location ?? ""}>
+    <div class="mt-1 flex h-6 items-center gap-1.5 px-2 text-[11px] whitespace-nowrap text-zinc-400" title={store.status?.location ?? ""}>
       {#if store.status?.remote}
-        <Cloud size={12} class="text-sky-500" /> Turso · <span class="truncate">{dbName()}</span>
+        <Cloud size={12} class="shrink-0 text-sky-500" />
+        <span class="shrink-0">Turso ·</span>
       {:else}
-        <HardDrive size={12} /> Local · <span class="truncate">{dbName()}</span>
+        <HardDrive size={12} class="shrink-0" />
+        <span class="shrink-0">Local ·</span>
       {/if}
+      <span class="min-w-0 truncate">{dbName()}</span>
     </div>
   </div>
 </aside>

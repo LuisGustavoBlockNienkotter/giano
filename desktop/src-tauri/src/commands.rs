@@ -302,7 +302,27 @@ pub async fn create_addendum(app: AppHandle, item_id: i64, data: ItemData) -> Cm
 pub struct UpdateResult {
     /// `None`: nothing changed, no revision was created.
     item: Option<ItemView>,
+    /// What happened, ready to show: `Rev. N — MERC-3: status Aberto → Aprovado`.
     summary: Option<String>,
+}
+
+/// `Rev. N — <the change of this item in revision N>` (N may be the open revision).
+fn change_message(g: &Giano, view: &ItemView) -> giano_core::Result<String> {
+    let items = g.items();
+    if let Some(open) = items.get_open_revision(view.project_id)? {
+        if view.rev_start != open.number {
+            // Changed back to what it was before the open revision: it left the revision.
+            return Ok(format!("{}: voltou ao que era; fora da Rev. {} (em aberto).", view.code(), open.number));
+        }
+    }
+    Ok(match items.revision(view.project_id, view.rev_start)? {
+        Some(rev) => {
+            let line = rev.changes.iter().find(|c| c.item_id == view.item_id).map_or(rev.title.as_str(), |c| c.summary.as_str());
+            let state = if rev.is_open { " (em aberto)" } else { "" };
+            format!("Rev. {}{state} — {line}", rev.number)
+        }
+        None => format!("Rev. {}", view.rev_start),
+    })
 }
 
 /// Save an item. `expected_version_id` is the version the editor opened: if the item changed
@@ -335,7 +355,7 @@ pub async fn update_item(
         }
         let item = items.update(item_id, &data)?;
         let summary = match &item {
-            Some(v) => items.revision(v.project_id, v.rev_start)?.map(|r| r.summary),
+            Some(v) => Some(change_message(g, v)?),
             None => None,
         };
         Ok(UpdateResult { item, summary })
@@ -358,7 +378,7 @@ pub async fn unarchive_item(app: AppHandle, item_id: i64) -> CmdResult<ItemView>
     run(&app, move |g| Ok(g.items().unarchive(item_id)?)).await
 }
 
-/// One revision per item that really changes, all or nothing. Emits `progress` events.
+/// One revision for all the items that really change, all or nothing. Emits `progress` events.
 #[tauri::command]
 pub async fn set_status_many(app: AppHandle, item_ids: Vec<i64>, status: ItemStatus) -> CmdResult<Vec<ItemView>> {
     let events = app.clone();
@@ -376,6 +396,18 @@ pub async fn set_status_many(app: AppHandle, item_ids: Vec<i64>, status: ItemSta
 #[tauri::command]
 pub async fn list_revisions(app: AppHandle, project_id: i64) -> CmdResult<Vec<Revision>> {
     run(&app, move |g| Ok(g.items().revisions(project_id)?)).await
+}
+
+/// Open a revision: every change to the project goes into it until `close_revision`.
+#[tauri::command]
+pub async fn open_revision(app: AppHandle, project_id: i64, summary: String) -> CmdResult<Revision> {
+    run(&app, move |g| Ok(g.items().open_revision(project_id, &summary)?)).await
+}
+
+/// Close the open revision; `None` = it had no change and was discarded.
+#[tauri::command]
+pub async fn close_revision(app: AppHandle, project_id: i64, summary: Option<String>) -> CmdResult<Option<Revision>> {
+    run(&app, move |g| Ok(g.items().close_revision(project_id, summary.as_deref())?)).await
 }
 
 #[derive(Serialize)]

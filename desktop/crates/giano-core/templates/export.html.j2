@@ -168,7 +168,8 @@ pre.highlight .hl-code { background: none; }
   <table>
     <tr><th>Rev.</th><th>Data</th><th>Resumo</th></tr>
     {% for r in diff_revisions %}
-    <tr><td>{{ r.number }}</td><td>{{ r.date }}</td><td>{{ r.summary }}</td></tr>
+    <tr><td>{{ r.number }}</td><td>{{ r.date }}</td><td>{{ r.summary }}
+      {%- if r.lines %}<ul>{% for line in r.lines %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}</td></tr>
     {% endfor %}
   </table>
   {% endif %}

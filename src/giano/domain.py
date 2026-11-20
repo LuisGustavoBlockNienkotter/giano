@@ -269,12 +269,39 @@ class Project:
 
 
 @dataclass(frozen=True)
+class RevisionChange:
+    """The net change of one item in a revision, e.g. ``MERC-3: status Aberto → Concluído``."""
+
+    item_id: int
+    summary: str
+
+
+@dataclass(frozen=True)
 class Revision:
+    """A numbered state of a project's list. One revision may change several items (a
+    block of changes); ``changes`` has one line per item, in the order they were first
+    changed. An open revision (``is_open``) is the latest one and still collects changes."""
+
     project_id: int
     number: int
     created_at: str
     summary: str
-    item_id: int | None = None  # the item changed by this revision
+    is_open: bool = False
+    changes: tuple[RevisionChange, ...] = ()
+
+    @property
+    def item_ids(self) -> set[int]:
+        return {c.item_id for c in self.changes}
+
+    @property
+    def title(self) -> str:
+        """The summary to show (an open revision may not have one yet)."""
+        if self.summary:
+            return self.summary
+        if self.is_open:
+            n = len(self.changes)
+            return f"Em aberto ({n} {'alteração' if n == 1 else 'alterações'})"
+        return ""
 
 
 @dataclass(frozen=True)

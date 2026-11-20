@@ -67,6 +67,8 @@ class Store {
   editor = $state<EditorRequest | null>(null);
   projectDialog = $state<{ project: Project | null } | null>(null);
   exportHtml = $state(false);
+  /** Open a revision (collects a block of changes) or close the open one. */
+  revisionDialog = $state<"open" | "close" | null>(null);
   exportClaude = $state<{ noteIds: number[] | null } | null>(null);
   searchOpen = $state(false);
   /** Note to open when the notes view shows up (search result, quick note). */
@@ -238,6 +240,7 @@ class Store {
       !!this.editor ||
       !!this.projectDialog ||
       this.exportHtml ||
+      !!this.revisionDialog ||
       !!this.exportClaude ||
       this.searchOpen ||
       this.dialogs.length > 0 ||

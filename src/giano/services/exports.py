@@ -267,14 +267,30 @@ class Exporter:
             revs = [r for r in self.items.revisions(project.id) if base < r.number <= rev]
             # Items archived at this revision are left out entirely.
             diff.removed = [v for v in diff.removed if v.item_id not in archived_ids]
-            revs = [r for r in revs if r.item_id not in archived_ids]
             if keys is not None:
                 # Only the selected items: nothing about the others goes into the file.
                 diff.added = [v for v in diff.added if v.item_id in selected_ids]
                 diff.changed = [c for c in diff.changed if c.new.item_id in selected_ids]
                 diff.removed = []
-                revs = [r for r in revs if r.item_id in selected_ids]
-            diff_revisions = sorted(revs, key=lambda r: r.number)
+
+            def shown(item_id: int) -> bool:
+                return item_id not in archived_ids and (keys is None or item_id in selected_ids)
+
+            diff_revisions = []
+            for r in sorted(revs, key=lambda r: r.number):
+                lines = [c.summary for c in r.changes if shown(c.item_id)]
+                if not lines:
+                    continue
+                if len(lines) == len(r.changes):
+                    summary = r.summary
+                else:  # part of a block: say nothing about the items left out
+                    summary = lines[0] if len(lines) == 1 else f"{len(lines)} itens alterados"
+                diff_revisions.append({
+                    "number": r.number,
+                    "created_at": r.created_at,
+                    "summary": summary,
+                    "lines": lines if len(lines) > 1 else [],
+                })
         else:
             diff_revisions = []
 
@@ -328,7 +344,7 @@ class Exporter:
         folder = Path(out_dir) if out_dir else self.settings.export_dir
         path = folder / f"giano_{project.code}_rev{rev}_{day}.html"
         marked: list[str] = []
-        with self.items.db.transaction():
+        with self.items.db.transaction(), self.items.batch("Exportação: itens → Em desenvolvimento"):
             if mark_in_progress:
                 keys = selection_keys(numbers)
                 todo = [

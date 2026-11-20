@@ -570,7 +570,7 @@ class MainScreen(Screen):
                 self._fresh_after_busy = True  # the resume after the dialog closes
                 self.query_one("#items", ItemTable).selected.clear()  # the batch is done
                 self.reload_items(data=data)
-                revs = sorted(v.rev_start for v in changed)
+                revs = sorted({v.rev_start for v in changed})
                 where = (f"Rev. {revs[0]}" if len(revs) == 1 else f"Rev. {revs[0]}–{revs[-1]}")
                 self._ok(f"{len(changed)} itens: status → {status.label} ({where}): {codes}.")
 
