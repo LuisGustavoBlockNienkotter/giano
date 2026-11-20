@@ -4,6 +4,18 @@ Giano: TUI (Textual) to manage improvement lists per project, versioned by revis
 The database is a local SQLite file or a Turso (libSQL) database shared by several computers.
 The full product spec is in `SPEC.md`.
 
+## Product direction (READ FIRST)
+
+- **The Textual TUI is FROZEN** (`src/giano/tui/`, `giano.tcss`): no new features, no UI
+  changes, no refactors. Only touch it if a change elsewhere breaks it (keep it running).
+- **New features and UI work go to the desktop app** (`desktop/`, Tauri + Rust + Svelte).
+- **The CLI stays maintained** (`src/giano/cli.py`, `giano item ...` / `giano itens`, and the
+  `services/` + `db/` it uses): Claude's user-level `giano` skill drives it to file items
+  automatically. Keep its commands and output stable; extend it when a desktop feature
+  needs to be reachable from automation.
+- Both stacks share the database: a schema change still goes to BOTH migration files with
+  the same version number (see the Desktop section), or the CLI breaks on the shared DB.
+
 ## Commands
 
 ```bash
