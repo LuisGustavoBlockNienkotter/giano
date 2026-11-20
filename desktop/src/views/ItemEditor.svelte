@@ -113,7 +113,7 @@
       } else if (req.mode === "edit") {
         const r = await api.updateItem(req.item.item_id, payload, req.item.version_id, force);
         saved = r.item;
-        store.toast(r.summary ? `Rev. ${r.item?.rev_start} — ${r.summary}` : "Nenhuma alteração; nenhuma revisão criada.", r.item ? "success" : "info");
+        store.toast(r.summary ?? "Nenhuma alteração; nenhuma revisão criada.", r.item ? "success" : "info");
       }
       store.editor = null;
       if (req.mode === "new" && req.sourceNoteId) {

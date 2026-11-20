@@ -61,6 +61,9 @@ export const api = {
     invoke<ItemView[]>("set_status_many", { itemIds, status }),
 
   listRevisions: (projectId: number) => invoke<Revision[]>("list_revisions", { projectId }),
+  openRevision: (projectId: number, summary: string) => invoke<Revision>("open_revision", { projectId, summary }),
+  closeRevision: (projectId: number, summary: string | null) =>
+    invoke<Revision | null>("close_revision", { projectId, summary }),
   diff: (projectId: number, revFrom: number, revTo: number) =>
     invoke<DiffView>("diff", { projectId, revFrom, revTo }),
 

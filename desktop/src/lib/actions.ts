@@ -82,7 +82,7 @@ export async function toggleArchive(item: ItemView) {
   }
 }
 
-/** One revision per item that changes; all or nothing. */
+/** One revision for all the items that change (or into the open revision); all or nothing. */
 export async function setStatus(items: ItemView[], status: StatusValue): Promise<boolean> {
   if (refuse(items.find((i) => i.data.archived) ?? null)) return false;
   const todo = items.filter((i) => i.data.status !== status);
@@ -100,7 +100,7 @@ export async function setStatus(items: ItemView[], status: StatusValue): Promise
   store.toast(
     changed.length === 1
       ? `${changed[0].code}: status → ${label} (Rev. ${changed[0].rev_start}).`
-      : `${changed.length} itens → ${label}.`,
+      : `${changed.length} itens → ${label} (Rev. ${changed[0].rev_start}).`,
   );
   await reload(items.length === 1 ? items[0].item_id : store.selectedItemId);
   return true;

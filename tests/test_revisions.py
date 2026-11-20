@@ -177,7 +177,7 @@ def test_migrations_are_idempotent(tmp_path):
     db.close()
 
 
-def test_set_status_many_one_revision_per_changed_item(g, project):
+def test_set_status_many_one_revision_for_the_block(g, project):
     a = g.items.create(project.id, make("A"))
     b = g.items.create(project.id, make("B", status=ItemStatus.IN_PROGRESS))
     c = g.items.create(project.id, make("C"))
@@ -187,16 +187,23 @@ def test_set_status_many_one_revision_per_changed_item(g, project):
         progress=lambda d, t: seen.append((d, t)),
     )
     assert [v.code for v in changed] == ["MERC-1", "MERC-3"]  # B already was; A once
-    assert [v.rev_start for v in changed] == [4, 5]
+    assert [v.rev_start for v in changed] == [4, 4]
     assert seen == [(0, 2), (1, 2), (2, 2)]
-    assert [r.summary for r in g.items.revisions(project.id)[:2]] == [
-        "MERC-3: status Aberto → Em desenvolvimento",
+    rev = g.items.revisions(project.id)[0]
+    assert (rev.number, rev.summary) == (4, "2 itens → Em desenvolvimento")
+    assert [c.summary for c in rev.changes] == [
         "MERC-1: status Aberto → Em desenvolvimento",
+        "MERC-3: status Aberto → Em desenvolvimento",
     ]
     assert {v.data.status for v in g.items.list_items(project.id)} == {ItemStatus.IN_PROGRESS}
     # Nothing to change: no revision.
     assert g.items.set_status_many([a.item_id, b.item_id], ItemStatus.IN_PROGRESS) == []
-    assert g.items.latest_revision(project.id) == 5
+    assert g.items.latest_revision(project.id) == 4
+    # A single item changing keeps its own description.
+    g.items.set_status_many([a.item_id, b.item_id], ItemStatus.DONE)
+    assert g.items.revisions(project.id)[0].summary == "2 itens → Concluído"
+    g.items.set_status_many([a.item_id, c.item_id], ItemStatus.DONE)
+    assert g.items.revisions(project.id)[0].summary == "MERC-3: status Em desenvolvimento → Concluído"
 
 
 def test_set_status_many_is_all_or_nothing(g, project):

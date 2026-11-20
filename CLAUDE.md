@@ -99,8 +99,17 @@ desktop/
 - `item_versions` = content with `rev_start`/`rev_end` (NULL = current). Append-only:
   the only UPDATE allowed is closing a version (`rev_end = N+1`).
 - List at revision N: `rev_start <= N AND (rev_end IS NULL OR rev_end > N)`.
-- Every change = one row in `revisions` (number sequential per project, summary text),
+- Every change goes into a row of `revisions` (number sequential per project, summary text),
   inside one `db.transaction()`. Delete only closes the current version.
+- A revision may hold N changes (`revision_changes`: one line per item, its net change;
+  `revisions.item_id` is legacy, no longer written). Changes go to `ItemService._target`:
+  the project's OPEN revision (`is_open = 1`, always the latest; `open_revision` /
+  `close_revision`, CLI `giano revisao abrir|fechar|ver`), else the current
+  `ItemService.batch()` (bulk ops: `set_status_many`, export marking), else a new revision
+  of its own. In a collecting revision an item changed again has its version from THAT
+  revision deleted and rewritten (the only DELETE on `item_versions`, since that revision is
+  not finished); going back to the previous content reopens the old version and drops the
+  change line. Closing an empty revision deletes it.
 - Saving with no real change (after `ItemData.normalized()`) must NOT create a revision.
 - Tags link to versions (`item_version_tags`), not to items.
 - Archiving = a new version with `archived = 1` (`ItemData.archived`), via

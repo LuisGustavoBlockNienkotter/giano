@@ -63,6 +63,8 @@ pub fn run() {
             commands::unarchive_item,
             commands::set_status_many,
             commands::list_revisions,
+            commands::open_revision,
+            commands::close_revision,
             commands::diff,
             commands::list_notes,
             commands::get_note,

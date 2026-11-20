@@ -31,6 +31,7 @@
     ChevronUp,
     CornerDownRight,
     History,
+    GitCommitVertical,
     ListChecks,
     Archive,
     FolderOpen,
@@ -312,9 +313,23 @@
     {#if pv.rev < pv.latest_rev}
       <div class="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-5 py-2 text-[13px] text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
         <History size={15} />
-        <span class="flex-1"><strong>Rev. {pv.rev} de {pv.latest_rev}</strong> — somente leitura{pv.revision ? `: ${pv.revision.summary}` : ""}</span>
+        <span class="flex-1"><strong>Rev. {pv.rev} de {pv.latest_rev}</strong> — somente leitura{pv.revision ? `: ${pv.revision.title}` : ""}</span>
         <button class="btn h-7 bg-amber-100 px-2.5 hover:bg-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30" onclick={() => store.showRevision(null)}>
           Voltar à última <span class="kbd">L</span>
+        </button>
+      </div>
+    {/if}
+
+    {#if pv.rev === pv.latest_rev && pv.revision?.is_open}
+      {@const n = pv.revision.changes.length}
+      <div class="flex items-center gap-3 border-b border-sky-200 bg-sky-50 px-5 py-2 text-[13px] text-sky-900 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200">
+        <GitCommitVertical size={15} />
+        <span class="min-w-0 flex-1 truncate">
+          <strong>Rev. {pv.revision.number} em aberto</strong>{pv.revision.summary ? ` — ${pv.revision.summary}` : ""}
+          <span class="text-sky-700/80 dark:text-sky-300/80">· {plural(n, "alteração", "alterações")} · todas as mudanças entram nesta revisão até fechá-la</span>
+        </span>
+        <button class="btn h-7 bg-sky-100 px-2.5 hover:bg-sky-200 dark:bg-sky-500/20 dark:hover:bg-sky-500/30" onclick={() => (store.revisionDialog = "close")}>
+          Fechar revisão
         </button>
       </div>
     {/if}
@@ -515,6 +530,16 @@
       >
         <Sparkles size={17} />
       </button>
+      {#if !store.readOnly && !pv.revision?.is_open}
+        <button
+          class="fab pointer-events-auto"
+          onclick={() => (store.revisionDialog = "open")}
+          title="Abrir revisão: junta um bloco de alterações numa revisão só"
+          aria-label="Abrir revisão"
+        >
+          <GitCommitVertical size={17} />
+        </button>
+      {/if}
       <button class="fab pointer-events-auto" onclick={() => (store.exportHtml = true)} title="Exportar HTML (X)" aria-label="Exportar HTML">
         <FileCode2 size={17} />
       </button>

@@ -375,19 +375,36 @@ impl<'g> Exporter<'g> {
                 .collect();
             // Items archived at this revision are left out entirely.
             diff.removed.retain(|v| !archived_ids.contains(&v.item_id));
-            revs.retain(|r| r.item_id.map_or(true, |id| !archived_ids.contains(&id)));
             if keys.is_some() {
                 // Only the selected items: nothing about the others goes into the file.
                 diff.added.retain(|v| selected_ids.contains(&v.item_id));
                 diff.changed.retain(|c| selected_ids.contains(&c.new.item_id));
                 diff.removed.clear();
-                revs.retain(|r| r.item_id.is_some_and(|id| selected_ids.contains(&id)));
             }
+            let shown = |id: i64| !archived_ids.contains(&id) && (keys.is_none() || selected_ids.contains(&id));
             revs.sort_by_key(|r| r.number);
-            diff_revisions = revs
-                .iter()
-                .map(|r| json!({"number": r.number, "date": format_date(&r.created_at), "summary": r.summary}))
-                .collect();
+            for r in &revs {
+                let lines: Vec<&str> =
+                    r.changes.iter().filter(|c| shown(c.item_id)).map(|c| c.summary.as_str()).collect();
+                if lines.is_empty() {
+                    continue;
+                }
+                let summary = if lines.len() == r.changes.len() {
+                    r.summary.clone()
+                } else if lines.len() == 1 {
+                    // Part of a block: say nothing about the items left out.
+                    lines[0].to_string()
+                } else {
+                    format!("{} itens alterados", lines.len())
+                };
+                let lines: Vec<&str> = if lines.len() > 1 { lines } else { Vec::new() };
+                diff_revisions.push(json!({
+                    "number": r.number,
+                    "date": format_date(&r.created_at),
+                    "summary": summary,
+                    "lines": lines,
+                }));
+            }
             diff_json = json!({
                 "rev_from": diff.rev_from,
                 "rev_to": diff.rev_to,
@@ -426,7 +443,7 @@ impl<'g> Exporter<'g> {
     }
 
     /// Write the HTML file. With `mark_in_progress` the exported items whose status is
-    /// Aberto/Em análise/Aprovado move to "Em desenvolvimento" (one revision each, after the
+    /// Aberto/Em análise/Aprovado move to "Em desenvolvimento" (one revision for all, after the
     /// document is rendered: the file shows the list as it was exported). Only for the latest
     /// revision; the status changes and the file are all or nothing.
     ///
@@ -448,7 +465,7 @@ impl<'g> Exporter<'g> {
         };
         let path = folder.join(format!("giano_{}_rev{}_{day}.html", project.code, doc.rev));
         let mut marked: Vec<String> = Vec::new();
-        self.g.db.transaction(|| {
+        items_svc.batch("Exportação: itens → Em desenvolvimento", || {
             if opts.mark_in_progress {
                 let todo: Vec<ItemView> = items_svc
                     .list_items(project.id, Some(doc.rev), Archived::No)?

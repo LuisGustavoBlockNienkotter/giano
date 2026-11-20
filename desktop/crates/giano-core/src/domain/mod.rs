@@ -38,6 +38,6 @@ pub use note_status::NoteStatus;
 pub use priority::Priority;
 pub use project::Project;
 pub use ranges::{format_ranges, parse_ranges};
-pub use revision::Revision;
+pub use revision::{Revision, RevisionChange};
 pub use revision_diff::RevisionDiff;
 pub use text::{normalize_body, normalize_code, normalize_tag, normalize_tags, split_tags};

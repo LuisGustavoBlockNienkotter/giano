@@ -4,7 +4,7 @@
 //! diffs) live in `services::items`.
 
 use crate::db::{Database, Row};
-use crate::domain::{ItemData, ItemStatus, ItemType, ItemView, Priority, Revision};
+use crate::domain::{ItemData, ItemStatus, ItemType, ItemView, Priority, Revision, RevisionChange};
 use crate::error::{Error, Result};
 use crate::params;
 
@@ -17,45 +17,151 @@ pub fn latest_revision_number(db: &Database, project_id: i64) -> Result<i64> {
     Ok(r.and_then(|r| r.at::<Option<i64>>(0)).unwrap_or(0))
 }
 
+/// The latest revision of a project (an open revision is always the latest), one query.
+#[derive(Debug, Clone, Copy)]
+pub struct LastRevision {
+    pub id: i64,
+    pub number: i64,
+    pub is_open: bool,
+}
+
+pub fn last_revision(db: &Database, project_id: i64) -> Result<Option<LastRevision>> {
+    let r = db.query_one(
+        "SELECT id, number, is_open FROM revisions WHERE project_id = ? ORDER BY number DESC LIMIT 1",
+        params![project_id],
+    )?;
+    Ok(r.map(|r| LastRevision { id: r.get("id"), number: r.get("number"), is_open: r.get("is_open") }))
+}
+
 pub fn insert_revision(
     db: &Database,
     project_id: i64,
     number: i64,
     now: &str,
     summary: &str,
-    item_id: Option<i64>,
+    is_open: bool,
+) -> Result<i64> {
+    Ok(db
+        .execute(
+            "INSERT INTO revisions (project_id, number, created_at, summary, is_open) VALUES (?, ?, ?, ?, ?)",
+            params![project_id, number, now, summary, is_open],
+        )?
+        .last_insert_rowid)
+}
+
+pub fn update_revision(
+    db: &Database,
+    revision_id: i64,
+    summary: &str,
+    is_open: bool,
+    created_at: Option<&str>,
 ) -> Result<()> {
+    match created_at {
+        None => db.execute(
+            "UPDATE revisions SET summary = ?, is_open = ? WHERE id = ?",
+            params![summary, is_open, revision_id],
+        )?,
+        Some(at) => db.execute(
+            "UPDATE revisions SET summary = ?, is_open = ?, created_at = ? WHERE id = ?",
+            params![summary, is_open, at, revision_id],
+        )?,
+    };
+    Ok(())
+}
+
+/// Only for a revision that ended up with no change (no version points to it).
+pub fn delete_revision(db: &Database, revision_id: i64) -> Result<()> {
+    db.execute("DELETE FROM revision_changes WHERE revision_id = ?", params![revision_id])?;
+    db.execute("DELETE FROM revisions WHERE id = ?", params![revision_id])?;
+    Ok(())
+}
+
+/// Record (or replace) the net change of an item in a revision.
+pub fn set_change(db: &Database, revision_id: i64, item_id: i64, summary: &str) -> Result<()> {
     db.execute(
-        "INSERT INTO revisions (project_id, number, created_at, summary, item_id) VALUES (?, ?, ?, ?, ?)",
-        params![project_id, number, now, summary, item_id],
+        "INSERT INTO revision_changes (revision_id, item_id, summary) VALUES (?, ?, ?)
+         ON CONFLICT (revision_id, item_id) DO UPDATE SET summary = excluded.summary",
+        params![revision_id, item_id, summary],
     )?;
     Ok(())
 }
 
-fn rev(r: &Row) -> Revision {
-    Revision {
-        project_id: r.get("project_id"),
-        number: r.get("number"),
-        created_at: r.get("created_at"),
-        summary: r.get("summary"),
-        item_id: r.get("item_id"),
-    }
+pub fn delete_change(db: &Database, revision_id: i64, item_id: i64) -> Result<()> {
+    db.execute(
+        "DELETE FROM revision_changes WHERE revision_id = ? AND item_id = ?",
+        params![revision_id, item_id],
+    )?;
+    Ok(())
 }
 
+pub fn change_lines(db: &Database, revision_id: i64) -> Result<Vec<String>> {
+    let rows = db.query(
+        "SELECT summary FROM revision_changes WHERE revision_id = ? ORDER BY id",
+        params![revision_id],
+    )?;
+    Ok(rows.iter().map(|r| r.at(0)).collect())
+}
+
+const REVISION_SELECT: &str = "
+SELECT r.project_id, r.number, r.created_at, r.summary, r.is_open,
+       c.item_id AS change_item, c.summary AS change_summary
+FROM revisions r LEFT JOIN revision_changes c ON c.revision_id = r.id";
+
+/// Group the rows of revisions LEFT JOIN changes (ordered by revision, then change).
+fn revisions(rows: &[Row]) -> Vec<Revision> {
+    struct Acc {
+        project_id: i64,
+        number: i64,
+        created_at: String,
+        summary: String,
+        is_open: bool,
+        changes: Vec<RevisionChange>,
+    }
+    let mut out: Vec<Acc> = Vec::new();
+    for r in rows {
+        let number: i64 = r.get("number");
+        if out.last().map_or(true, |a| a.number != number) {
+            out.push(Acc {
+                project_id: r.get("project_id"),
+                number,
+                created_at: r.get("created_at"),
+                summary: r.get("summary"),
+                is_open: r.get("is_open"),
+                changes: Vec::new(),
+            });
+        }
+        if let Some(item_id) = r.get::<Option<i64>>("change_item") {
+            let acc = out.last_mut().expect("pushed above");
+            acc.changes.push(RevisionChange { item_id, summary: r.get("change_summary") });
+        }
+    }
+    out.into_iter()
+        .map(|a| Revision::new(a.project_id, a.number, a.created_at, a.summary, a.is_open, a.changes))
+        .collect()
+}
+
+/// All revisions of a project with their changes, newest first. One query.
 pub fn list_revisions(db: &Database, project_id: i64) -> Result<Vec<Revision>> {
     let rows = db.query(
-        "SELECT * FROM revisions WHERE project_id = ? ORDER BY number DESC",
+        &format!("{REVISION_SELECT} WHERE r.project_id = ? ORDER BY r.number DESC, c.id"),
         params![project_id],
     )?;
-    Ok(rows.iter().map(rev).collect())
+    Ok(revisions(&rows))
 }
 
 pub fn get_revision(db: &Database, project_id: i64, number: i64) -> Result<Option<Revision>> {
-    let r = db.query_one(
-        "SELECT * FROM revisions WHERE project_id = ? AND number = ?",
+    let rows = db.query(
+        &format!("{REVISION_SELECT} WHERE r.project_id = ? AND r.number = ? ORDER BY c.id"),
         params![project_id, number],
     )?;
-    Ok(r.as_ref().map(rev))
+    Ok(revisions(&rows).into_iter().next())
+}
+
+pub fn get_open_revision(db: &Database, project_id: i64) -> Result<Option<Revision>> {
+    match last_revision(db, project_id)? {
+        Some(last) if last.is_open => get_revision(db, project_id, last.number),
+        _ => Ok(None),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,6 +246,23 @@ pub fn close_version(db: &Database, version_id: i64, rev_end: i64) -> Result<()>
     if res.rows_affected != 1 {
         return Err(Error::Database(format!("Versão {version_id} não está vigente")));
     }
+    Ok(())
+}
+
+/// Make a closed version current again (its successor, created in a revision that is still
+/// collecting changes, was undone).
+pub fn reopen_version(db: &Database, version_id: i64) -> Result<()> {
+    db.execute("UPDATE item_versions SET rev_end = NULL WHERE id = ?", params![version_id])?;
+    Ok(())
+}
+
+/// Remove a version created by a revision that is still collecting changes (an open revision
+/// or a batch), when the same item changes again in that revision. Versions of finished
+/// revisions are never deleted.
+pub fn delete_version(db: &Database, version_id: i64) -> Result<()> {
+    db.execute("DELETE FROM item_version_tags WHERE version_id = ?", params![version_id])?;
+    db.execute("DELETE FROM item_fts WHERE rowid = ?", params![version_id])?;
+    db.execute("DELETE FROM item_versions WHERE id = ?", params![version_id])?;
     Ok(())
 }
 

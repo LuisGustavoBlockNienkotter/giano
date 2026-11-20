@@ -215,10 +215,14 @@ fn html_mark_in_progress() {
     assert!(r.path.file_name().unwrap().to_string_lossy().starts_with("giano_MERC_rev10_"));
     use ItemStatus::*;
     assert_eq!(statuses(&g, p.id), [(1, InProgress), (2, InProgress), (3, Open), (4, Done), (5, InProgress)].into());
-    assert_eq!(g.items().latest_revision(p.id).unwrap(), 12);
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), 11); // one revision for all the marked items
+    let rev = g.items().revision(p.id, 11).unwrap().unwrap();
+    assert_eq!(rev.summary, "Exportação: itens → Em desenvolvimento");
+    let lines: Vec<&str> = rev.changes.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(lines, ["MERC-1: status Aberto → Em desenvolvimento", "MERC-2: status Aprovado → Em desenvolvimento"]);
     let opts = HtmlOptions { keys: keys(&[1, 2]), mark_in_progress: true, ..Default::default() };
     assert!(g.exports().export_html("MERC", &opts, None).unwrap().marked.is_empty());
-    assert_eq!(g.items().latest_revision(p.id).unwrap(), 12);
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), 11);
 }
 
 #[test]

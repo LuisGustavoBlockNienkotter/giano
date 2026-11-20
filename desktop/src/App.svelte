@@ -11,6 +11,7 @@
   import SettingsView from "./views/SettingsView.svelte";
   import ItemEditor from "./views/ItemEditor.svelte";
   import ProjectDialog from "./views/ProjectDialog.svelte";
+  import RevisionDialog from "./views/RevisionDialog.svelte";
   import ExportHtmlDialog from "./views/ExportHtmlDialog.svelte";
   import ExportClaudeDialog from "./views/ExportClaudeDialog.svelte";
   import SearchPalette from "./views/SearchPalette.svelte";
@@ -120,6 +121,7 @@
 
 {#if store.editor}<ItemEditor request={store.editor} />{/if}
 {#if store.projectDialog}<ProjectDialog project={store.projectDialog?.project ?? null} />{/if}
+{#if store.revisionDialog && store.pv}<RevisionDialog mode={store.revisionDialog} />{/if}
 {#if store.exportHtml}<ExportHtmlDialog />{/if}
 {#if store.exportClaude}<ExportClaudeDialog noteIds={store.exportClaude?.noteIds ?? null} />{/if}
 {#if store.searchOpen}<SearchPalette />{/if}

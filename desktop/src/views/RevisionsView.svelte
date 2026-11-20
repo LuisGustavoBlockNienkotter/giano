@@ -99,7 +99,8 @@
     <header class="px-5 pt-4 pb-3">
       <h1 class="font-display text-[17px] font-semibold">Revisões</h1>
       <p class="mt-0.5 text-xs text-zinc-500">
-        Toda alteração na lista gera uma revisão. <span class="kbd">Enter</span> abre a lista nela,
+        Cada alteração gera uma revisão; com uma revisão aberta, o bloco todo vira uma só.
+        <span class="kbd">Enter</span> abre a lista nela,
         <span class="kbd">M</span> marca a base da comparação.
       </p>
     </header>
@@ -115,9 +116,15 @@
         >
           <span class="w-10 shrink-0 pt-px font-mono text-[12px] font-semibold text-zinc-500">{r.number}</span>
           <span class="min-w-0 flex-1">
-            <span class="block text-[13px] leading-snug select-text">{r.summary}</span>
+            <span class="block text-[13px] leading-snug select-text">{r.title}</span>
+            {#if r.changes.length > 1}
+              <ul class="mt-1 space-y-0.5 text-[12px] leading-snug text-zinc-500 select-text dark:text-zinc-400">
+                {#each r.changes as c (c.item_id)}<li class="truncate" title={c.summary}>• {c.summary}</li>{/each}
+              </ul>
+            {/if}
             <span class="mt-0.5 flex items-center gap-2 text-[11px] text-zinc-400">
               {formatDate(r.created_at)}
+              {#if r.is_open}<span class="chip h-4 bg-sky-100 px-1.5 text-[10px] text-sky-800 dark:bg-sky-500/20 dark:text-sky-300">em aberto</span>{/if}
               {#if base === r.number}<span class="chip h-4 bg-accent-100 px-1.5 text-[10px] text-accent-700 dark:bg-accent-500/20 dark:text-accent-300">base</span>{/if}
               {#if store.pv && store.pv.rev === r.number && store.pv.rev < store.pv.latest_rev}<span class="chip h-4 bg-amber-100 px-1.5 text-[10px] text-amber-800">aberta</span>{/if}
             </span>

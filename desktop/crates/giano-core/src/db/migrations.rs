@@ -133,7 +133,26 @@ DROP TABLE items;
 ALTER TABLE items_new RENAME TO items;
 "#;
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3)];
+/// Revisions with several changes: a block of changes = one revision. `revision_changes` has
+/// one line per item changed by a revision (its net change); it replaces `revisions.item_id`
+/// (kept, no longer written). A project may have one OPEN revision (`is_open = 1`, always its
+/// latest): every change goes into it until it is closed.
+pub const V4: &str = r#"
+ALTER TABLE revisions
+    ADD COLUMN is_open INTEGER NOT NULL DEFAULT 0 CHECK (is_open IN (0, 1));
+CREATE UNIQUE INDEX revisions_one_open ON revisions (project_id) WHERE is_open = 1;
+CREATE TABLE revision_changes (
+    id          INTEGER PRIMARY KEY,
+    revision_id INTEGER NOT NULL REFERENCES revisions(id),
+    item_id     INTEGER NOT NULL REFERENCES items(id),
+    summary     TEXT    NOT NULL,
+    UNIQUE (revision_id, item_id)
+);
+INSERT INTO revision_changes (revision_id, item_id, summary)
+    SELECT id, item_id, summary FROM revisions WHERE item_id IS NOT NULL;
+"#;
+
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4)];
 
 pub fn current_version(db: &Database) -> Result<i64> {
     db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)", params![])?;

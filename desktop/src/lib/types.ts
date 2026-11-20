@@ -42,12 +42,23 @@ export interface Project {
   created_at: string;
 }
 
+/** The net change of one item in a revision. */
+export interface RevisionChange {
+  item_id: number;
+  summary: string;
+}
+
+/** One revision may change several items (a block of changes). */
 export interface Revision {
   project_id: number;
   number: number;
   created_at: string;
   summary: string;
-  item_id: number | null;
+  /** The latest revision, still collecting every change until it is closed. */
+  is_open: boolean;
+  changes: RevisionChange[];
+  /** The summary to show (an open revision may not have one yet). */
+  title: string;
 }
 
 export interface ProjectView {

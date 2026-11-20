@@ -82,6 +82,18 @@ Cada projeto tem a sua lista. Cada item tem:
     `rev_inicio <= N AND (rev_fim IS NULL OR rev_fim > N)`
   - As tags ficam ligadas à versão do item, não ao item.
   - Cada alteração roda numa única transação.
+- **Uma revisão pode ter N alterações** (um bloco de mudanças vira uma revisão só):
+  - **Revisão aberta**: abro uma revisão no projeto (desktop ou `giano revisao abrir`);
+    toda alteração seguinte, de qualquer tela ou computador, entra nela até eu fechá-la
+    (`giano revisao fechar`) com um resumo opcional. Ao fechar, ela recebe a data do
+    fechamento; uma revisão aberta sem alterações é descartada. Só uma aberta por projeto,
+    e ela é sempre a última.
+  - Operações em lote (status de vários itens selecionados, exportação HTML com
+    "Em desenvolvimento") geram uma revisão só, mesmo sem revisão aberta.
+  - A revisão guarda só o **estado final** de cada item: alterar o mesmo item de novo
+    reescreve a versão daquela revisão, e um item que volta ao que era sai da revisão.
+  - Cada revisão tem uma linha por item alterado (`revision_changes`, ex.:
+    "MERC-12: prioridade Alta → Média"), mostrada no histórico e no HTML.
 - **Por padrão a TUI mostra sempre a última revisão.** Posso escolher uma revisão
   anterior, que aparece em modo somente leitura, com indicação clara no cabeçalho
   (ex.: "Rev. 9 de 14 — somente leitura").
