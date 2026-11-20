@@ -59,7 +59,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="flex h-8 items-center gap-2 rounded-md px-2 text-[13px] {selected
+          class="clickable flex h-8 items-center gap-2 rounded-md px-2 text-[13px] {selected
             ? 'bg-white font-medium text-zinc-900 shadow-xs ring-1 ring-zinc-200/80 dark:bg-zinc-800 dark:text-white dark:ring-zinc-700'
             : 'text-zinc-700 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/70'}"
           onclick={() => {

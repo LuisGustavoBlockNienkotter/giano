@@ -33,6 +33,16 @@
   .selectable {
     user-select: text;
   }
+  /* Everything clickable shows the hand cursor (Tailwind's preflight resets buttons to default). */
+  button:not(:disabled),
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  a[href],
+  .clickable {
+    cursor: pointer;
+  }
   ::selection {
     @apply bg-accent-200 dark:bg-accent-700/60;
   }
@@ -46,7 +56,7 @@
 }
 
 @utility btn {
-  @apply inline-flex h-8 cursor-default items-center gap-1.5 rounded-md px-3 text-[13px] font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-40;
+  @apply inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-40;
 }
 @utility btn-primary {
   @apply btn bg-accent-600 text-white shadow-sm hover:bg-accent-700;
