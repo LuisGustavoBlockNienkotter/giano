@@ -117,13 +117,26 @@
     !!(filters.text || filters.type || filters.status || filters.priority || filters.tag || filters.difficulty),
   );
 
-  // Keep a valid selection: the first visible item when the selected one is gone.
+  // Keep a valid selection. When the selected item leaves this view (deleted, or archived /
+  // restored here or on another computer), select its neighbour in the list as it was, so the
+  // next action (Z, Del...) never falls on the item that just left. Not reactive on purpose.
+  let previousIds: number[] = [];
   $effect(() => {
-    if (!visible.length) return;
-    if (store.selectedItemId == null || !all.some((v) => v.item_id === store.selectedItemId)) {
-      store.selectedItemId = visible[0].item_id;
+    const ids = visible.map((v) => v.item_id);
+    const sel = store.selectedItemId;
+    const current = sel == null ? undefined : all.find((v) => v.item_id === sel);
+    if (!current || current.data.archived !== store.showArchive) {
+      store.selectedItemId = neighbour(previousIds, sel, new Set(ids)) ?? ids[0] ?? null;
     }
+    previousIds = ids;
   });
+
+  /** The first item after `id` (else before it) in `order` that is still in `present`. */
+  function neighbour(order: number[], id: number | null, present: Set<number>): number | undefined {
+    const at = id == null ? -1 : order.indexOf(id);
+    if (at < 0) return undefined;
+    return order.slice(at + 1).find((x) => present.has(x)) ?? order.slice(0, at).reverse().find((x) => present.has(x));
+  }
 
   // A different list (project, revision, archive): the multi-selection does not carry over.
   let context = $derived(`${pv?.project.id}:${pv?.rev}:${store.showArchive}`);
@@ -194,6 +207,10 @@
     if (await setStatus(items, value as StatusValue)) marked.clear();
   }
 
+  async function archiveTargets() {
+    if (await toggleArchive(targets())) marked.clear();
+  }
+
   function toggleArchiveView() {
     store.showArchive = !store.showArchive;
     store.selectedItemId = null;
@@ -237,7 +254,7 @@
       n: () => newItem(),
       d: () => selected && newAddendum(selected),
       Delete: () => selected && deleteItem(selected),
-      z: () => selected && toggleArchive(selected),
+      z: () => archiveTargets(),
       s: () => statusMenu?.show(),
       v: () => toggleArchiveView(),
       f: () => filterInput?.focus(),
@@ -507,7 +524,7 @@
           <span><span class="kbd">N</span> novo</span>
           <span><span class="kbd">E</span> editar</span>
           <span><span class="kbd">D</span> adendo</span>
-          <span><span class="kbd">Z</span> arquivar</span>
+          <span><span class="kbd">Z</span> {store.showArchive ? "restaurar" : "arquivar"}{markedItems.length ? ` (${markedItems.length})` : ""}</span>
           <span><span class="kbd">V</span> arquivo</span>
           <span><span class="kbd">R</span> revisões</span>
           <span><span class="kbd">F5</span> atualizar</span>

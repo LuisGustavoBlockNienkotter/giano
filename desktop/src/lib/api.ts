@@ -57,6 +57,9 @@ export const api = {
   deleteItem: (itemId: number) => invoke<number>("delete_item", { itemId }),
   archiveItem: (itemId: number) => invoke<ItemView>("archive_item", { itemId }),
   unarchiveItem: (itemId: number) => invoke<ItemView>("unarchive_item", { itemId }),
+  /** One revision for all the items that change, all or nothing. */
+  setArchivedMany: (itemIds: number[], archived: boolean) =>
+    invoke<ItemView[]>("set_archived_many", { itemIds, archived }),
   /** Not versioned: no revision. `day` = `YYYY-MM-DD`, or null to clear. */
   setControlDate: (itemIds: number[], day: string | null) => invoke<ItemView[]>("set_control_date", { itemIds, day }),
   setStatusMany: (itemIds: number[], status: StatusValue) =>

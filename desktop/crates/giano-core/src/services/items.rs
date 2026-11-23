@@ -479,6 +479,54 @@ impl<'g> ItemService<'g> {
         })
     }
 
+    /// Archive (`archived = true`) or restore several items in ONE revision (per project; with
+    /// an open revision, into it), skipping items already in that state, all in one
+    /// transaction: either every item changes or none does. Returns the new views, in the
+    /// order of `item_ids`. `progress(done, total)` as in `set_status_many`.
+    pub fn set_archived_many(
+        &self,
+        item_ids: &[i64],
+        archived: bool,
+        mut progress: Progress<'_>,
+    ) -> Result<Vec<ItemView>> {
+        self.batch("", || {
+            let mut seen = HashSet::new();
+            let mut todo = Vec::new();
+            let mut projects = HashSet::new();
+            for &item_id in item_ids {
+                if !seen.insert(item_id) {
+                    continue;
+                }
+                let current = self.require(item_id)?;
+                if current.data.archived != archived {
+                    projects.insert(current.project_id);
+                    todo.push(current);
+                }
+            }
+            for project_id in projects {
+                if !self.project(project_id)?.active {
+                    return Err(Error::validation("Projeto arquivado: somente leitura."));
+                }
+            }
+            let what = if archived { "arquivados" } else { "restaurados do arquivo" };
+            self.set_batch_summary(&format!("{} itens {what}", todo.len()));
+            if let Some(p) = progress.as_mut() {
+                p(0, todo.len());
+            }
+            let mut changed = Vec::new();
+            for current in &todo {
+                let data = ItemData { archived, ..current.data.clone() };
+                if let Some(new) = self.save(current, &data)? {
+                    changed.push(new);
+                }
+                if let Some(p) = progress.as_mut() {
+                    p(changed.len(), todo.len());
+                }
+            }
+            Ok(changed)
+        })
+    }
+
     fn require(&self, item_id: i64) -> Result<ItemView> {
         repo::get_current(self.db(), item_id)?.ok_or_else(not_found)
     }

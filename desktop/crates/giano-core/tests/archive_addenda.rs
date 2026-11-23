@@ -71,6 +71,67 @@ fn unarchive_restores_and_double_operations_are_refused() {
 }
 
 #[test]
+fn archive_many_one_revision_and_restore_many() {
+    let g = env();
+    let p = project(&g);
+    let (a, b, c) = three(&g, p.id);
+    let before = g.items().latest_revision(p.id).unwrap();
+    let mut seen = Vec::new();
+    let mut progress = |d: usize, t: usize| seen.push((d, t));
+    let changed = g
+        .items()
+        .set_archived_many(&[a.item_id, c.item_id, a.item_id], true, Some(&mut progress))
+        .unwrap();
+    assert_eq!(codes(&changed), ["MERC-1", "MERC-3"]);
+    assert_eq!(changed.iter().map(|v| v.rev_start).collect::<Vec<_>>(), [before + 1, before + 1]);
+    assert_eq!(seen, [(0, 2), (1, 2), (2, 2)]);
+    assert_eq!(g.items().revisions(p.id).unwrap()[0].summary, "2 itens arquivados");
+    assert_eq!(codes(&g.items().list_items(p.id, None, Archived::No).unwrap()), ["MERC-2"]);
+    assert_eq!(codes(&g.items().list_items(p.id, None, Archived::Only).unwrap()), ["MERC-1", "MERC-3"]);
+    // Already archived items are skipped; nothing to change: no revision.
+    assert!(g.items().set_archived_many(&[a.item_id, c.item_id], true, None).unwrap().is_empty());
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), before + 1);
+    // Mixed: only the one that changes; a single change keeps its own description.
+    let changed = g.items().set_archived_many(&[a.item_id, b.item_id], true, None).unwrap();
+    assert_eq!(codes(&changed), ["MERC-2"]);
+    assert_eq!(g.items().revisions(p.id).unwrap()[0].summary, "MERC-2: arquivado");
+    let restored = g.items().set_archived_many(&[a.item_id, b.item_id, c.item_id], false, None).unwrap();
+    assert_eq!(codes(&restored), ["MERC-1", "MERC-2", "MERC-3"]);
+    assert_eq!(g.items().revisions(p.id).unwrap()[0].summary, "3 itens restaurados do arquivo");
+    assert_eq!(restored[1].data, b.data);
+    assert!(g.items().list_items(p.id, None, Archived::Only).unwrap().is_empty());
+}
+
+#[test]
+fn archive_many_is_all_or_nothing() {
+    let g = env();
+    let p = project(&g);
+    let (a, b, _) = three(&g, p.id);
+    let rev = g.items().latest_revision(p.id).unwrap();
+    assert!(g.items().set_archived_many(&[a.item_id, 999], true, None).is_err());
+    assert!(!g.items().get(a.item_id, None).unwrap().unwrap().data.archived);
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), rev);
+    g.projects().set_active(p.id, false).unwrap();
+    assert!(err_msg(g.items().set_archived_many(&[a.item_id, b.item_id], true, None)).contains("Projeto arquivado"));
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), rev);
+}
+
+#[test]
+fn archive_many_goes_into_the_open_revision() {
+    let g = env();
+    let p = project(&g);
+    let (a, b, _) = three(&g, p.id);
+    let open = g.items().open_revision(p.id, "Limpeza").unwrap();
+    g.items().set_archived_many(&[a.item_id, b.item_id], true, None).unwrap();
+    assert_eq!(g.items().latest_revision(p.id).unwrap(), open.number);
+    // Restoring in the same open revision cancels the change: the items leave the revision.
+    g.items().set_archived_many(&[a.item_id], false, None).unwrap();
+    let rev = g.items().revisions(p.id).unwrap().remove(0);
+    let lines: Vec<&str> = rev.changes.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(lines, ["MERC-2: arquivado"]);
+}
+
+#[test]
 fn archived_item_is_read_only_and_edit_never_archives() {
     let g = env();
     let p = project(&g);

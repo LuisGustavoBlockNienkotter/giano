@@ -378,6 +378,17 @@ pub async fn unarchive_item(app: AppHandle, item_id: i64) -> CmdResult<ItemView>
     run(&app, move |g| Ok(g.items().unarchive(item_id)?)).await
 }
 
+/// Archive or restore several items: one revision, all or nothing. Emits `progress` events.
+#[tauri::command]
+pub async fn set_archived_many(app: AppHandle, item_ids: Vec<i64>, archived: bool) -> CmdResult<Vec<ItemView>> {
+    let events = app.clone();
+    run(&app, move |g| {
+        let mut progress = |done: usize, total: usize| emit_progress(&events, "archive", done, total);
+        Ok(g.items().set_archived_many(&item_ids, archived, Some(&mut progress))?)
+    })
+    .await
+}
+
 /// Set (`YYYY-MM-DD`) or clear (`None`) the control date of items. Not versioned: no revision.
 #[tauri::command]
 pub async fn set_control_date(app: AppHandle, item_ids: Vec<i64>, day: Option<String>) -> CmdResult<Vec<ItemView>> {
