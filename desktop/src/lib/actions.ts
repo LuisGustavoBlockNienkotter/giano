@@ -66,20 +66,30 @@ export async function deleteItem(item: ItemView) {
   }
 }
 
-export async function toggleArchive(item: ItemView) {
-  if (refuse(null)) return;
-  try {
-    if (item.data.archived) {
-      const v = await api.unarchiveItem(item.item_id);
-      store.toast(`${v.code} restaurado à lista (Rev. ${v.rev_start}).`);
-    } else {
-      const v = await api.archiveItem(item.item_id);
-      store.toast(`${v.code} arquivado (Rev. ${v.rev_start}).`);
-    }
-    await reload(null);
-  } catch (e) {
-    store.toast(errorMessage(e), "error");
-  }
+/** Archive the items, or restore them when they are archived (all of them must be in the same
+ * state: the list and the archive are separate views). One revision, all or nothing. An item
+ * that leaves the view moves the selection to its neighbour (ItemsView). */
+export async function toggleArchive(items: ItemView[]): Promise<boolean> {
+  if (!items.length || refuse(null)) return false;
+  const archived = !items[0].data.archived;
+  const todo = items.filter((i) => i.data.archived !== archived);
+  const run = () => api.setArchivedMany(todo.map((i) => i.item_id), archived);
+  const changed =
+    todo.length > 1
+      ? await store.withBusy(archived ? "Arquivando…" : "Restaurando…", run)
+      : await run().catch((e) => {
+          store.toast(errorMessage(e), "error");
+          return null;
+        });
+  if (!changed?.length) return false;
+  const rev = changed[0].rev_start;
+  store.toast(
+    changed.length === 1
+      ? `${changed[0].code} ${archived ? "arquivado" : "restaurado à lista"} (Rev. ${rev}).`
+      : `${changed.length} itens ${archived ? "arquivados" : "restaurados à lista"} (Rev. ${rev}).`,
+  );
+  await store.loadProject();
+  return true;
 }
 
 /** One revision for all the items that change (or into the open revision); all or nothing. */

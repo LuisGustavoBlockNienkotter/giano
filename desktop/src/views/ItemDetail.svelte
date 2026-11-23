@@ -97,7 +97,7 @@
         <button class="btn-secondary h-7 px-2.5" onclick={() => newAddendum(item)} title="Criar adendo (D)">
           <GitBranchPlus size={13} /> Adendo
         </button>
-        <button class="btn-secondary h-7 px-2.5" onclick={() => toggleArchive(item)} title="Arquivar / restaurar (Z)">
+        <button class="btn-secondary h-7 px-2.5" onclick={() => toggleArchive([item])} title="Arquivar / restaurar (Z)">
           {#if item.data.archived}<ArchiveRestore size={13} /> Restaurar{:else}<Archive size={13} /> Arquivar{/if}
         </button>
       {/if}

@@ -61,6 +61,7 @@ pub fn run() {
             commands::delete_item,
             commands::archive_item,
             commands::unarchive_item,
+            commands::set_archived_many,
             commands::set_status_many,
             commands::set_control_date,
             commands::list_revisions,
