@@ -3,7 +3,7 @@
 //! This module only knows SQL. The revision rules (when to create a revision, summaries,
 //! diffs) live in `services::items`.
 
-use crate::db::{Database, Row};
+use crate::db::{Database, Row, Value};
 use crate::domain::{ItemData, ItemStatus, ItemType, ItemView, Priority, Revision, RevisionChange};
 use crate::error::{Error, Result};
 use crate::params;
@@ -238,6 +238,19 @@ pub fn insert_version(db: &Database, item_id: i64, rev_start: i64, data: &ItemDa
     Ok(version_id)
 }
 
+/// Set (or clear, `None`) the control date of these items. Not versioned. One statement for all
+/// of them (each statement is a round trip on Turso).
+pub fn set_control_date(db: &Database, item_ids: &[i64], day: Option<&str>) -> Result<()> {
+    if item_ids.is_empty() {
+        return Ok(());
+    }
+    let marks = vec!["?"; item_ids.len()].join(", ");
+    let mut values: Vec<Value> = vec![Value::from(day)];
+    values.extend(item_ids.iter().map(|&id| Value::from(id)));
+    db.execute(&format!("UPDATE items SET control_date = ? WHERE id IN ({marks})"), &values)?;
+    Ok(())
+}
+
 pub fn close_version(db: &Database, version_id: i64, rev_end: i64) -> Result<()> {
     let res = db.execute(
         "UPDATE item_versions SET rev_end = ? WHERE id = ? AND rev_end IS NULL",
@@ -268,7 +281,7 @@ pub fn delete_version(db: &Database, version_id: i64) -> Result<()> {
 
 const SELECT: &str = "
 SELECT i.id AS item_id, i.project_id, p.code AS project_code, i.number, i.addendum,
-       i.source_note_id,
+       i.source_note_id, i.created_at, i.control_date,
        v.id AS version_id, v.rev_start, v.rev_end, v.title, v.type, v.priority,
        v.difficulty, v.status, v.body, v.archived,
        (SELECT group_concat(name, char(31)) FROM (
@@ -302,6 +315,8 @@ fn view(r: &Row) -> ItemView {
         rev_end: r.get("rev_end"),
         source_note_id: r.get("source_note_id"),
         addendum: r.get("addendum"),
+        created_at: r.get("created_at"),
+        control_date: r.get("control_date"),
         data: ItemData {
             title: r.get("title"),
             kind: ItemType::from_value(&kind).unwrap_or(ItemType::Improvement),

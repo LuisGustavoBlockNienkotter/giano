@@ -95,7 +95,10 @@ desktop/
 
 ## Revision model (core invariant)
 
-- `items` = stable identity (project_id, number, source_note_id). Never updated/deleted.
+- `items` = stable identity (project_id, number, source_note_id, created_at). Never deleted;
+  the only UPDATE is `items.control_date` (the user's control date, NOT versioned: no
+  revision, same at every revision; set to today by the HTML export with `control_date`,
+  or by `ItemService.set_control_date` / `giano item controle`).
 - `item_versions` = content with `rev_start`/`rev_end` (NULL = current). Append-only:
   the only UPDATE allowed is closing a version (`rev_end = N+1`).
 - List at revision N: `rev_start <= N AND (rev_end IS NULL OR rev_end > N)`.

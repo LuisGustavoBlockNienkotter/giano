@@ -106,6 +106,26 @@ export async function setStatus(items: ItemView[], status: StatusValue): Promise
   return true;
 }
 
+/** Set (`YYYY-MM-DD`) or clear (null) the control date. Not versioned: no revision, so the
+ * views are patched in place instead of reloading the list. */
+export async function setControlDate(item: ItemView, day: string | null): Promise<boolean> {
+  if (!store.pv?.project.active) {
+    store.toast("Projeto arquivado: somente leitura.", "info");
+    return false;
+  }
+  try {
+    const views = await api.setControlDate([item.item_id], day);
+    for (const v of views) {
+      const local = store.pv?.items.find((x) => x.item_id === v.item_id);
+      if (local) local.control_date = v.control_date;
+    }
+    return true;
+  } catch (e) {
+    store.toast(errorMessage(e), "error");
+    return false;
+  }
+}
+
 export async function copyItemMarkdown(item: ItemView) {
   try {
     const md = await api.itemMarkdown(item.item_id, store.pv?.rev === store.pv?.latest_rev ? null : (store.pv?.rev ?? null));

@@ -26,6 +26,10 @@ export interface ItemView {
   rev_start: number;
   rev_end: number | null;
   source_note_id: number | null;
+  /** When the item (or addendum) was created, ISO date/time. */
+  created_at: string;
+  /** The user's control date (`YYYY-MM-DD`), not versioned: the same at every revision. */
+  control_date: string | null;
   data: ItemData;
   code: string;
   key: [number, number];
@@ -163,6 +167,8 @@ export interface ExportOutcome {
   path: string;
   summary: string;
   marked: string[];
+  /** Items whose control date the HTML export set to today. */
+  control_dated: number;
   content: string | null;
 }
 

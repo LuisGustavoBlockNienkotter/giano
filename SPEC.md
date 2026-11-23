@@ -36,6 +36,13 @@ Cada projeto tem a sua lista. Cada item tem:
 - tags livres (várias por item, com autocompletar das tags já existentes)
 - corpo em **Markdown**, que é a única fonte de verdade. O HTML nunca é guardado no
   banco: é sempre gerado a partir do Markdown.
+- data de criação: gravada ao criar o item (ou adendo); aparece só no detalhe do item.
+- **data de controle**: uma data livre para o meu controle, mostrada como `DD/MM/AA` na
+  listagem do app desktop (coluna "Controle", no lugar da antiga coluna de dificuldade, que
+  passou a ser um pequeno indicador ao lado da prioridade). A exportação HTML grava a data
+  de hoje nos itens exportados; também posso defini-la à mão no detalhe do item ou com
+  `giano item controle`. **Não é versionada**: não gera revisão e vale para todas as
+  revisões (é a mesma ao ver uma revisão antiga).
 
 ### Arquivo de itens
 - Um item pode ser **arquivado manualmente** (nunca automaticamente): sai da lista normal
@@ -145,6 +152,10 @@ numa conversa com o Claude e analisar as anotações à luz do estado do projeto
   concluídos, descartados e os que já estão em desenvolvimento ficam como estão). O
   arquivo mostra a lista como estava antes da mudança. Se o arquivo não puder ser
   gravado, nenhum status muda.
+- Opção "gravar a data de controle" (marcada por padrão no app desktop e na CLI;
+  `--sem-data-controle` desliga): os itens exportados recebem a data de hoje como data de
+  controle, em qualquer revisão exportada, sem gerar revisão. Projeto arquivado não muda.
+  Se o arquivo não puder ser gravado, nenhuma data muda.
 
 ## Interface (TUI)
 - Barra lateral com os projetos; área principal com a tabela de itens (ordenável e

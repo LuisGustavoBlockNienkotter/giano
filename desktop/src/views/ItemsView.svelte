@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { ItemView } from "../lib/types";
 
-  type SortColumn = "id" | "title" | "type" | "priority" | "difficulty" | "status" | "tags";
+  type SortColumn = "id" | "title" | "type" | "priority" | "control" | "status" | "tags";
 
   // Kept while switching views (the TUI keeps its filters too).
   const filters = $state({
@@ -38,7 +38,7 @@
   } from "@lucide/svelte";
   import { store } from "../lib/state.svelte";
   import { api } from "../lib/api";
-  import { parseRanges, CLOSED, plural } from "../lib/format";
+  import { parseRanges, CLOSED, plural, shortDate, formatDate } from "../lib/format";
   import { newItem, editItem, newAddendum, deleteItem, toggleArchive, setStatus } from "../lib/actions";
   import Badges, { PRIORITY_DOT, STATUS_DOT } from "../lib/components/Badges.svelte";
   import Menu from "../lib/components/Menu.svelte";
@@ -88,8 +88,9 @@
         return [store.typeLabel(d.type), v.number, v.addendum];
       case "priority":
         return [PRIORITY_RANK[d.priority], v.number, v.addendum];
-      case "difficulty":
-        return [d.difficulty, v.number, v.addendum];
+      case "control":
+        // Items without a control date go last.
+        return [v.control_date ?? "~", v.number, v.addendum];
       case "status":
         return [STATUS_RANK[d.status], v.number, v.addendum];
       case "tags":
@@ -258,8 +259,8 @@
     { key: "id", label: "ID", class: "w-[88px]" },
     { key: "title", label: "Título", class: "" },
     { key: "type", label: "Tipo", class: "w-[84px]" },
-    { key: "priority", label: "Prioridade", class: "w-[92px]" },
-    { key: "difficulty", label: "Dif.", class: "w-[48px]" },
+    { key: "priority", label: "Prioridade", class: "w-[118px]" },
+    { key: "control", label: "Controle", class: "w-[76px]" },
     { key: "status", label: "Status", class: "w-[144px]" },
   ];
 
@@ -464,16 +465,21 @@
                   </td>
                   <td class="truncate border-b border-zinc-100 px-2 py-2 text-zinc-500 dark:border-zinc-900">{store.typeLabel(v.data.type)}</td>
                   <td class="border-b border-zinc-100 px-2 py-2 dark:border-zinc-900">
-                    <span class="inline-flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                      <span class="h-2 w-2 rounded-full {PRIORITY_DOT[v.data.priority]}"></span>{store.priorityLabel(v.data.priority)}
+                    <span class="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
+                      <span class="h-2 w-2 shrink-0 rounded-full {PRIORITY_DOT[v.data.priority]}"></span>
+                      <span class="truncate">{store.priorityLabel(v.data.priority)}</span>
+                      <span class="ml-auto flex shrink-0 items-end gap-[2px] pl-1" title="Dificuldade {v.data.difficulty}/5">
+                        {#each [1, 2, 3, 4, 5] as n (n)}
+                          <span class="w-[2px] rounded-sm {n <= v.data.difficulty ? 'bg-zinc-500 dark:bg-zinc-400' : 'bg-zinc-200 dark:bg-zinc-700'}" style="height: {3 + n * 1.5}px"></span>
+                        {/each}
+                      </span>
                     </span>
                   </td>
-                  <td class="border-b border-zinc-100 px-2 py-2 dark:border-zinc-900" title="Dificuldade {v.data.difficulty}/5">
-                    <span class="flex items-end gap-[2px]">
-                      {#each [1, 2, 3, 4, 5] as n (n)}
-                        <span class="w-[3px] rounded-sm {n <= v.data.difficulty ? 'bg-zinc-500 dark:bg-zinc-400' : 'bg-zinc-200 dark:bg-zinc-700'}" style="height: {4 + n * 2}px"></span>
-                      {/each}
-                    </span>
+                  <td
+                    class="border-b border-zinc-100 px-2 py-2 text-zinc-500 tabular-nums dark:border-zinc-900"
+                    title={v.control_date ? `Data de controle: ${formatDate(v.control_date)}` : "Sem data de controle"}
+                  >
+                    {#if v.control_date}{shortDate(v.control_date)}{:else}<span class="text-zinc-300 dark:text-zinc-700">—</span>{/if}
                   </td>
                   <td class="border-b border-zinc-100 px-2 py-2 dark:border-zinc-900"><Badges status={v.data.status} /></td>
                 </tr>

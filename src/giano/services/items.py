@@ -40,7 +40,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date, datetime
 
 from giano.db import Database
 from giano.db import items as repo
@@ -374,6 +374,25 @@ class ItemService:
             if not self._project(current.project_id).active:
                 raise ValidationError("Projeto arquivado: somente leitura.")
             return self._save(current, replace(current.data, archived=archived))  # type: ignore[return-value]
+
+    # -- control date (not versioned) ---------------------------------------
+
+    def set_control_date(self, item_ids: list[int], day: str | None) -> None:
+        """Set (``YYYY-MM-DD``) or clear (``None``) the control date of these items. It is
+        not part of the item's content: no revision, the same at every revision."""
+        if day is not None:
+            try:
+                day = date.fromisoformat(day.strip()).isoformat()
+            except ValueError:
+                raise ValidationError(f"Data de controle inválida: '{day}'.") from None
+        if not item_ids:
+            return
+        with self.db.transaction():
+            # The export sets it with the repository directly (no query per item).
+            for project_id in {self._require(i).project_id for i in item_ids}:
+                if not self._project(project_id).active:
+                    raise ValidationError("Projeto arquivado: somente leitura.")
+            repo.set_control_date(self.db, list(item_ids), day)
 
     def set_status(self, item_id: int, status: ItemStatus) -> ItemView | None:
         current = self._require(item_id)

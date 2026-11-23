@@ -9,11 +9,14 @@
     CornerDownRight,
     NotebookPen,
     Eye,
+    CalendarPlus,
+    CalendarCheck,
   } from "@lucide/svelte";
   import Markdown from "../lib/components/Markdown.svelte";
   import Badges from "../lib/components/Badges.svelte";
   import { store } from "../lib/state.svelte";
-  import { editItem, newAddendum, toggleArchive, deleteItem, copyItemMarkdown, readOnlyReason } from "../lib/actions";
+  import { editItem, newAddendum, toggleArchive, deleteItem, copyItemMarkdown, readOnlyReason, setControlDate } from "../lib/actions";
+  import { formatDate, todayIso } from "../lib/format";
   import type { ItemView } from "../lib/types";
 
   let { item }: { item: ItemView } = $props();
@@ -23,6 +26,9 @@
   let addenda = $derived(item.is_addendum ? [] : all.filter((v) => v.number === item.number && v.addendum > 0));
   let editable = $derived(!readOnlyReason(item));
   let listEditable = $derived(!readOnlyReason(null));
+  // The control date is not versioned: it can be changed at any revision, only an archived
+  // project is read-only.
+  let controlEditable = $derived(!!store.pv?.project.active);
 
   function go(v: ItemView) {
     store.showArchive = v.data.archived;
@@ -57,6 +63,28 @@
       {#each item.data.tags as t (t)}
         <span class="chip text-zinc-500 ring-1 ring-zinc-200 ring-inset dark:text-zinc-400 dark:ring-zinc-700">#{t}</span>
       {/each}
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-zinc-500">
+      <span class="inline-flex items-center gap-1.5" title="Data de criação do item">
+        <CalendarPlus size={13} class="text-zinc-400" /> Criado em {formatDate(item.created_at)}
+      </span>
+      <span class="inline-flex items-center gap-1.5" title="Data de controle: gravada como hoje ao exportar o HTML, ou definida aqui (não gera revisão)">
+        <CalendarCheck size={13} class="text-zinc-400" /> Controle
+        {#if controlEditable}
+          <input
+            type="date"
+            class="input h-6 w-auto px-1.5 text-[12px]"
+            value={item.control_date ?? ""}
+            onchange={(e) => setControlDate(item, (e.target as HTMLInputElement).value || null)}
+          />
+          {#if item.control_date !== todayIso()}
+            <button class="text-accent-600 hover:underline dark:text-accent-400" onclick={() => setControlDate(item, todayIso())}>hoje</button>
+          {/if}
+        {:else}
+          <span class="text-zinc-700 dark:text-zinc-300">{item.control_date ? formatDate(item.control_date) : "—"}</span>
+        {/if}
+      </span>
     </div>
 
     <div class="mt-4 flex flex-wrap gap-1.5">

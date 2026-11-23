@@ -319,6 +319,11 @@ class ItemView:
     source_note_id: int | None = None
     # 0 = a normal item; N > 0 = the N-th addendum of item ``number`` (MERC-33.1).
     addendum: int = 0
+    # When the item (or addendum) was created, ISO date/time.
+    created_at: str = ""
+    # The user's control date (ISO ``YYYY-MM-DD``), not versioned: the same at every
+    # revision. Set by the HTML export (today) or by hand.
+    control_date: str | None = None
 
     @property
     def key(self) -> ItemKey:

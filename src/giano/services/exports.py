@@ -20,6 +20,7 @@ from giano.domain import (
     display_value,
     item_code,
 )
+from giano.db import items as items_repo
 from giano.services.items import ItemService
 from giano.services.markdown import demote_headings, pygments_css, to_html
 from giano.services.notes import NoteService, parse_date
@@ -35,6 +36,7 @@ class ExportResult:
     content: str
     summary: str  # user-facing one-liner
     marked: tuple[str, ...] = ()  # codes moved to "Em desenvolvimento" by the export
+    control_dated: int = 0  # items whose control date the export set to today
 
 
 # Statuses that "mark as in development" moves forward; done/discarded items and the
@@ -323,6 +325,7 @@ class Exporter:
         numbers=None,
         mark_in_progress: bool = False,
         progress: Callable[[int, int], None] | None = None,
+        control_date: bool = False,
     ) -> ExportResult:
         """Write the HTML file. With ``mark_in_progress`` the exported items whose status is
         Aberto/Em análise/Aprovado move to "Em desenvolvimento" (one revision each, after the
@@ -331,7 +334,11 @@ class Exporter:
 
         ``progress(done, total)`` is called before the first status change and after each
         one (``total`` = items to mark), so a UI can show how far it got: on Turso every
-        change is several network round trips."""
+        change is several network round trips.
+
+        With ``control_date`` the exported items get today as their control date (not
+        versioned: no revision, so any revision may be exported; skipped for an archived
+        project, which is read-only). Also all or nothing with the file."""
         project = self.projects.require(project_code)
         latest = self.items.latest_revision(project.id)
         if mark_in_progress and rev is not None and rev != latest:
@@ -344,13 +351,20 @@ class Exporter:
         folder = Path(out_dir) if out_dir else self.settings.export_dir
         path = folder / f"giano_{project.code}_rev{rev}_{day}.html"
         marked: list[str] = []
+        control_date = control_date and project.active
+        today = self.clock().date().isoformat()
+        exported: list[ItemView] = []
         with self.items.db.transaction(), self.items.batch("Exportação: itens → Em desenvolvimento"):
-            if mark_in_progress:
+            if mark_in_progress or control_date:
                 keys = selection_keys(numbers)
-                todo = [
+                exported = [
                     v for v in self.items.list_items(project.id, rev, archived=False)
-                    if (keys is None or v.key in keys) and v.data.status in MARKABLE
+                    if keys is None or v.key in keys
                 ]
+            if control_date:
+                items_repo.set_control_date(self.items.db, [v.item_id for v in exported], today)
+            if mark_in_progress:
+                todo = [v for v in exported if v.data.status in MARKABLE]
                 if progress:
                     progress(0, len(todo))
                 for v in todo:
@@ -368,4 +382,8 @@ class Exporter:
                 f"; {len(marked)} itens marcados como Em desenvolvimento"
                 + (f" ({', '.join(marked)})" if marked else "")
             )
-        return ExportResult(path, html, summary, tuple(marked))
+        if control_date:
+            summary += f"; data de controle {format_date(today)} em {len(exported)} itens"
+        return ExportResult(
+            path, html, summary, tuple(marked), len(exported) if control_date else 0
+        )

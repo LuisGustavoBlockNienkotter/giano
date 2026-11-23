@@ -62,6 +62,7 @@ pub fn run() {
             commands::archive_item,
             commands::unarchive_item,
             commands::set_status_many,
+            commands::set_control_date,
             commands::list_revisions,
             commands::open_revision,
             commands::close_revision,

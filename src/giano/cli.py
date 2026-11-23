@@ -31,6 +31,7 @@ from giano.domain import (
 from giano.services import Giano
 from giano.services import clipboard
 from giano.services.formatting import diff_markdown, item_preview
+from giano.services.exports import format_date
 from giano.services.notes import parse_date
 
 app = typer.Typer(
@@ -191,6 +192,13 @@ def export_html(
             "descartados; só na última revisão).",
         ),
     ] = False,
+    data_controle: Annotated[
+        bool,
+        typer.Option(
+            "--data-controle/--sem-data-controle",
+            help="Grava a data de hoje como data de controle dos itens exportados.",
+        ),
+    ] = True,
 ) -> None:
     """Gera um HTML autocontido da lista de um projeto numa revisão."""
     g = _giano(ctx)
@@ -198,7 +206,7 @@ def export_html(
         numbers = parse_item_keys(itens) if itens else None
         result = g.exports.export_html(
             projeto, rev, saida, alteracoes, comparar_com, numbers,
-            mark_in_progress=em_desenvolvimento,
+            mark_in_progress=em_desenvolvimento, control_date=data_controle,
         )
     except ValidationError as exc:
         _fail(str(exc))
@@ -505,6 +513,35 @@ def item_ver(
     addenda = [] if v.is_addendum else g.items.addenda(v)
     console.print(item_preview(v, note, original, addenda), markup=False, highlight=False,
                   soft_wrap=True)
+    dates = f"Criado em {format_date(v.created_at)}"
+    if v.control_date:
+        dates += f" · Data de controle: {format_date(v.control_date)}"
+    console.print(dates, markup=False, highlight=False)
+
+
+@item_app.command("controle")
+def item_controle(
+    ctx: typer.Context,
+    codigo: Annotated[str, typer.Argument(help="Identificador do item, ex.: MERC-12.")],
+    data: Annotated[
+        Optional[str],
+        typer.Argument(help="Data (AAAA-MM-DD, DD/MM/AAAA ou 'hoje'). Padrão: hoje."),
+    ] = None,
+    limpar: Annotated[bool, typer.Option("--limpar", help="Remove a data de controle.")] = False,
+) -> None:
+    """Define a data de controle de um item (não gera revisão)."""
+    g = _giano(ctx)
+    try:
+        v = _item(g, codigo)
+        day = None if limpar else parse_date(None if (data or "hoje").lower() == "hoje" else data)
+        g.items.set_control_date([v.item_id], day)
+    except ValidationError as exc:
+        _fail(str(exc))
+        return
+    if day is None:
+        console.print(f"{v.code}: data de controle removida.", markup=False, highlight=False)
+    else:
+        console.print(f"{v.code}: data de controle {format_date(day)}.", markup=False, highlight=False)
 
 
 @item_app.command("adendo")
