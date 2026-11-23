@@ -1,12 +1,13 @@
 <script lang="ts">
   // Self-contained HTML of the list at the revision shown, with item selection and the
-  // option to mark the exported items as "Em desenvolvimento" (latest revision only).
+  // option to mark the exported items as "Em desenvolvimento" (latest revision only) and to
+  // stamp today as their control date (any revision; not versioned).
   import { SvelteSet } from "svelte/reactivity";
   import { FileCode2, ExternalLink, FolderOpen, Filter } from "@lucide/svelte";
   import Modal from "../lib/components/Modal.svelte";
   import { api, errorMessage } from "../lib/api";
   import { store } from "../lib/state.svelte";
-  import { compareKeys, CLOSED } from "../lib/format";
+  import { compareKeys, CLOSED, shortDate, todayIso } from "../lib/format";
   import type { ExportOutcome, ItemView } from "../lib/types";
 
   const pv = store.pv!;
@@ -18,6 +19,8 @@
   let changes = $state(true);
   let compareTo = $state<number | null>(null);
   let markInProgress = $state(false);
+  // Always today; an archived project is read-only.
+  let controlDate = $state(pv.project.active);
   let result = $state<ExportOutcome | null>(null);
 
   let all = $derived(selected.size === items.length);
@@ -38,11 +41,17 @@
         compareTo: changes ? compareTo : null,
         keys,
         markInProgress: isLatest && markInProgress,
+        controlDate: pv.project.active && controlDate,
       }),
     );
     if (!outcome) return;
     result = outcome;
     if (outcome.marked.length) await store.loadProject();
+    else if (outcome.control_dated) {
+      // Not versioned: patch the list in place instead of reloading it.
+      const today = todayIso();
+      for (const v of store.pv?.items ?? []) if (selected.has(v.item_id) && !v.data.archived) v.control_date = today;
+    }
   }
 
   async function openFile() {
@@ -78,6 +87,11 @@
             {#if result.marked.length}
               <p class="mt-2 text-[12.5px] text-violet-700 dark:text-violet-300">
                 {result.marked.length} itens marcados como Em desenvolvimento: {result.marked.join(", ")}
+              </p>
+            {/if}
+            {#if result.control_dated}
+              <p class="mt-2 text-[12.5px] text-zinc-600 dark:text-zinc-400">
+                Data de controle {shortDate(todayIso())} gravada em {result.control_dated} {result.control_dated === 1 ? "item" : "itens"}.
               </p>
             {/if}
           </div>
@@ -126,6 +140,15 @@
                 {/each}
               </select>
             </div>
+          {/if}
+          {#if pv.project.active}
+            <label class="flex items-start gap-2 text-[13px]">
+              <input type="checkbox" class="mt-0.5 accent-accent-600" bind:checked={controlDate} />
+              <span>
+                Gravar <strong>{shortDate(todayIso())}</strong> como data de controle dos itens exportados
+                <span class="block text-xs text-zinc-500">Não gera revisão. Se o arquivo não puder ser gravado, nada muda.</span>
+              </span>
+            </label>
           {/if}
           {#if isLatest}
             <label class="flex items-start gap-2 text-[13px]">

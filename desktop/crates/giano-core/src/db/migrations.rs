@@ -152,7 +152,14 @@ INSERT INTO revision_changes (revision_id, item_id, summary)
     SELECT id, item_id, summary FROM revisions WHERE item_id IS NOT NULL;
 "#;
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4)];
+/// Control date: a per-item date the user keeps for their own control (shown as DD/MM/YY in
+/// the list). Set to today by the HTML export, or by hand. Not versioned: the only UPDATE on
+/// `items` (its identity columns never change).
+pub const V5: &str = r#"
+ALTER TABLE items ADD COLUMN control_date TEXT;
+"#;
+
+pub const MIGRATIONS: &[(i64, &str)] = &[(1, V1), (2, V2), (3, V3), (4, V4), (5, V5)];
 
 pub fn current_version(db: &Database) -> Result<i64> {
     db.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)", params![])?;

@@ -9,6 +9,12 @@ export function formatDate(iso: string | null | undefined): string {
   return m[4] ? `${day} ${m[4]}:${m[5]}` : day;
 }
 
+/** `2026-11-23` → `23/11/26` (the control date in the list). */
+export function shortDate(iso: string | null | undefined): string {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : "";
+}
+
 /** Relative day for lists: "hoje", "ontem", or the date. */
 export function relativeDay(isoDate: string): string {
   const today = new Date();

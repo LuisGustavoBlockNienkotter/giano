@@ -20,6 +20,11 @@ pub struct ItemView {
     pub source_note_id: Option<i64>,
     /// 0 = a normal item; N > 0 = the N-th addendum of item `number` (MERC-33.1).
     pub addendum: i64,
+    /// When the item (or addendum) was created, ISO date/time.
+    pub created_at: String,
+    /// The user's control date (ISO `YYYY-MM-DD`), not versioned: the same at every revision.
+    /// Set by the HTML export (today) or by hand.
+    pub control_date: Option<String>,
 }
 
 impl ItemView {
@@ -45,7 +50,7 @@ impl ItemView {
 
 impl Serialize for ItemView {
     fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        let mut st = s.serialize_struct("ItemView", 14)?;
+        let mut st = s.serialize_struct("ItemView", 16)?;
         st.serialize_field("item_id", &self.item_id)?;
         st.serialize_field("project_id", &self.project_id)?;
         st.serialize_field("project_code", &self.project_code)?;
@@ -55,6 +60,8 @@ impl Serialize for ItemView {
         st.serialize_field("rev_start", &self.rev_start)?;
         st.serialize_field("rev_end", &self.rev_end)?;
         st.serialize_field("source_note_id", &self.source_note_id)?;
+        st.serialize_field("created_at", &self.created_at)?;
+        st.serialize_field("control_date", &self.control_date)?;
         st.serialize_field("data", &self.data)?;
         st.serialize_field("code", &self.code())?;
         st.serialize_field("key", &self.key())?;

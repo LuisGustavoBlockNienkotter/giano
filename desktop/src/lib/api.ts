@@ -57,6 +57,8 @@ export const api = {
   deleteItem: (itemId: number) => invoke<number>("delete_item", { itemId }),
   archiveItem: (itemId: number) => invoke<ItemView>("archive_item", { itemId }),
   unarchiveItem: (itemId: number) => invoke<ItemView>("unarchive_item", { itemId }),
+  /** Not versioned: no revision. `day` = `YYYY-MM-DD`, or null to clear. */
+  setControlDate: (itemIds: number[], day: string | null) => invoke<ItemView[]>("set_control_date", { itemIds, day }),
   setStatusMany: (itemIds: number[], status: StatusValue) =>
     invoke<ItemView[]>("set_status_many", { itemIds, status }),
 
@@ -90,6 +92,7 @@ export const api = {
     compareTo: number | null;
     keys: [number, number][] | null;
     markInProgress: boolean;
+    controlDate: boolean;
   }) => invoke<ExportOutcome>("export_html", args),
   exportClaude: (args: {
     projectCode: string;

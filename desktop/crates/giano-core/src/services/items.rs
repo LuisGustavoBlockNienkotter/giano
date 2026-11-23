@@ -483,6 +483,38 @@ impl<'g> ItemService<'g> {
         repo::get_current(self.db(), item_id)?.ok_or_else(not_found)
     }
 
+    // -- control date (not versioned) -----------------------------------------
+
+    /// Set (`YYYY-MM-DD`) or clear (`None`) the control date of these items. It is not part
+    /// of the item's content: no revision, the same at every revision. Returns the current
+    /// views, in the order of `item_ids`. (The export sets it with the repository directly,
+    /// without a query per item.)
+    pub fn set_control_date(&self, item_ids: &[i64], day: Option<&str>) -> Result<Vec<ItemView>> {
+        let day = match day {
+            Some(d) => Some(
+                chrono::NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d")
+                    .map_err(|_| Error::validation(format!("Data de controle inválida: '{d}'.")))?
+                    .format("%Y-%m-%d")
+                    .to_string(),
+            ),
+            None => None,
+        };
+        self.db().transaction(|| {
+            let mut views = item_ids.iter().map(|&id| self.require(id)).collect::<Result<Vec<_>>>()?;
+            let projects: HashSet<i64> = views.iter().map(|v| v.project_id).collect();
+            for project_id in projects {
+                if !self.project(project_id)?.active {
+                    return Err(Error::validation("Projeto arquivado: somente leitura."));
+                }
+            }
+            repo::set_control_date(self.db(), item_ids, day.as_deref())?;
+            for v in &mut views {
+                v.control_date = day.clone();
+            }
+            Ok(views)
+        })
+    }
+
     pub fn set_status(&self, item_id: i64, status: ItemStatus) -> Result<Option<ItemView>> {
         let current = self.require(item_id)?;
         self.update(item_id, &ItemData { status, ..current.data })

@@ -27,6 +27,8 @@ pub struct ExportResult {
     pub summary: String,
     /// Codes moved to "Em desenvolvimento" by the export.
     pub marked: Vec<String>,
+    /// Items whose control date the export set to today.
+    pub control_dated: usize,
 }
 
 /// Statuses that "mark as in development" moves forward; done/discarded items and the ones
@@ -92,11 +94,21 @@ pub struct HtmlOptions {
     pub out_dir: Option<PathBuf>,
     /// Move the exported items with status Aberto/Em análise/Aprovado to "Em desenvolvimento".
     pub mark_in_progress: bool,
+    /// Set today as the control date of the exported items (not versioned: no revision).
+    pub control_date: bool,
 }
 
 impl Default for HtmlOptions {
     fn default() -> Self {
-        HtmlOptions { rev: None, changes: true, compare_to: None, keys: None, out_dir: None, mark_in_progress: false }
+        HtmlOptions {
+            rev: None,
+            changes: true,
+            compare_to: None,
+            keys: None,
+            out_dir: None,
+            mark_in_progress: false,
+            control_date: false,
+        }
     }
 }
 
@@ -246,7 +258,7 @@ impl<'g> Exporter<'g> {
         }
         fs::write(&path, &content)?;
         let summary = format!("{n_notes} anotações exportadas para {}", path.display());
-        Ok(ExportResult { path, content, summary, marked: vec![] })
+        Ok(ExportResult { path, content, summary, marked: vec![], control_dated: 0 })
     }
 
     // ------------------------------------------------------------------
@@ -448,6 +460,10 @@ impl<'g> Exporter<'g> {
     /// revision; the status changes and the file are all or nothing.
     ///
     /// `progress(done, total)` is called before the first status change and after each one.
+    ///
+    /// With `control_date` the exported items get today as their control date (not versioned:
+    /// no revision, so any revision may be exported; skipped for an archived project, which is
+    /// read-only). Also all or nothing with the file.
     pub fn export_html(&self, project_code: &str, opts: &HtmlOptions, mut progress: Progress<'_>) -> Result<ExportResult> {
         let project = self.g.projects().require(project_code)?;
         let items_svc = self.g.items();
@@ -465,18 +481,27 @@ impl<'g> Exporter<'g> {
         };
         let path = folder.join(format!("giano_{}_rev{}_{day}.html", project.code, doc.rev));
         let mut marked: Vec<String> = Vec::new();
+        let control_date = opts.control_date && project.active;
+        let today = self.g.now().date().format("%Y-%m-%d").to_string();
+        let mut exported: Vec<ItemView> = Vec::new();
         items_svc.batch("Exportação: itens → Em desenvolvimento", || {
-            if opts.mark_in_progress {
-                let todo: Vec<ItemView> = items_svc
+            if opts.mark_in_progress || control_date {
+                exported = items_svc
                     .list_items(project.id, Some(doc.rev), Archived::No)?
                     .into_iter()
                     .filter(|v| opts.keys.as_ref().map_or(true, |k| k.contains(&v.key())))
-                    .filter(|v| MARKABLE.contains(&v.data.status))
                     .collect();
+            }
+            if control_date {
+                let ids: Vec<i64> = exported.iter().map(|v| v.item_id).collect();
+                crate::db::items::set_control_date(&self.g.db, &ids, Some(&today))?;
+            }
+            if opts.mark_in_progress {
+                let todo: Vec<&ItemView> = exported.iter().filter(|v| MARKABLE.contains(&v.data.status)).collect();
                 if let Some(p) = progress.as_mut() {
                     p(0, todo.len());
                 }
-                for v in &todo {
+                for v in todo.iter().copied() {
                     let data = crate::domain::ItemData { status: ItemStatus::InProgress, ..v.data.clone() };
                     items_svc.update(v.item_id, &data)?;
                     marked.push(v.code());
@@ -495,7 +520,11 @@ impl<'g> Exporter<'g> {
                 let _ = write!(summary, " ({})", marked.join(", "));
             }
         }
-        Ok(ExportResult { path, content: doc.html, summary, marked })
+        if control_date {
+            let _ = write!(summary, "; data de controle {} em {} itens", format_date(&today), exported.len());
+        }
+        let control_dated = if control_date { exported.len() } else { 0 };
+        Ok(ExportResult { path, content: doc.html, summary, marked, control_dated })
     }
 }
 

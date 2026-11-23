@@ -121,7 +121,7 @@ Nas anotações: `ctrl+o` cria um item a partir da anotação (usando o texto se
 giano nota "Reunião com o comercial" --projeto MERC   # abre o editor de anotação
 giano nota "Ideia" --texto "corpo da anotação"         # cria sem abrir o editor
 giano export claude --projeto MERC [--desde 2026-01-01] [--todas]
-giano export html --projeto MERC [--rev 9] [--itens 1,3-5,33.1] [--sem-alteracoes] [--em-desenvolvimento]
+giano export html --projeto MERC [--rev 9] [--itens 1,3-5,33.1] [--sem-alteracoes] [--em-desenvolvimento]     [--sem-data-controle]   # por padrão grava hoje como data de controle dos itens exportados
 giano projetos | giano revisoes -p MERC | giano diff -p MERC 3 [9]
 giano itens -p MERC [--arquivados]
 giano item novo "Título" -p MERC [--tipo ajuste] [--prioridade alta] [-d 2] [--status aprovado] \n    [--tags "a, b"] [--corpo "texto" | --corpo - < corpo.md]
@@ -129,6 +129,7 @@ giano item ver MERC-12
 giano item adendo MERC-12 "Título do ajuste" [--corpo -] [...]   # cria MERC-12.1
 giano item editar MERC-12 [--status concluido] [--prioridade baixa] [...]   # só o que for informado
 giano item arquivar MERC-12 | giano item restaurar MERC-12
+giano item controle MERC-12 [2026-11-23 | 23/11/2026 | hoje] [--limpar]   # data de controle (sem revisão)
 giano config [--pasta-exportacao PASTA]
 giano demo
 ```

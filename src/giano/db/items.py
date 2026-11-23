@@ -215,6 +215,15 @@ def insert_version(db: Database, item_id: int, rev_start: int, data: ItemData) -
     return version_id
 
 
+def set_control_date(db: Database, item_ids: list[int], day: str | None) -> None:
+    """Set (or clear, ``None``) the control date of these items. Not versioned. One
+    statement for all of them (each statement is a round trip on Turso)."""
+    if not item_ids:
+        return
+    marks = ", ".join("?" * len(item_ids))
+    db.execute(f"UPDATE items SET control_date = ? WHERE id IN ({marks})", (day, *item_ids))
+
+
 def close_version(db: Database, version_id: int, rev_end: int) -> None:
     cur = db.execute(
         "UPDATE item_versions SET rev_end = ? WHERE id = ? AND rev_end IS NULL",
@@ -241,7 +250,7 @@ def delete_version(db: Database, version_id: int) -> None:
 
 _SELECT = """
 SELECT i.id AS item_id, i.project_id, p.code AS project_code, i.number, i.addendum,
-       i.source_note_id,
+       i.source_note_id, i.created_at, i.control_date,
        v.id AS version_id, v.rev_start, v.rev_end, v.title, v.type, v.priority,
        v.difficulty, v.status, v.body, v.archived,
        (SELECT group_concat(name, char(31)) FROM (
@@ -267,6 +276,8 @@ def _view(r: sqlite3.Row) -> ItemView:
         rev_end=r["rev_end"],
         source_note_id=r["source_note_id"],
         addendum=r["addendum"],
+        created_at=r["created_at"],
+        control_date=r["control_date"],
         data=ItemData(
             title=r["title"],
             type=ItemType(r["type"]),

@@ -378,6 +378,12 @@ pub async fn unarchive_item(app: AppHandle, item_id: i64) -> CmdResult<ItemView>
     run(&app, move |g| Ok(g.items().unarchive(item_id)?)).await
 }
 
+/// Set (`YYYY-MM-DD`) or clear (`None`) the control date of items. Not versioned: no revision.
+#[tauri::command]
+pub async fn set_control_date(app: AppHandle, item_ids: Vec<i64>, day: Option<String>) -> CmdResult<Vec<ItemView>> {
+    run(&app, move |g| Ok(g.items().set_control_date(&item_ids, day.as_deref())?)).await
+}
+
 /// One revision for all the items that really change, all or nothing. Emits `progress` events.
 #[tauri::command]
 pub async fn set_status_many(app: AppHandle, item_ids: Vec<i64>, status: ItemStatus) -> CmdResult<Vec<ItemView>> {
@@ -520,6 +526,8 @@ pub struct ExportOutcome {
     path: PathBuf,
     summary: String,
     marked: Vec<String>,
+    /// Items whose control date the export set to today (HTML export only).
+    control_dated: usize,
     /// The Markdown (Claude export only), to copy to the clipboard.
     content: Option<String>,
 }
@@ -534,6 +542,7 @@ pub async fn export_html(
     compare_to: Option<i64>,
     keys: Option<Vec<(i64, i64)>>,
     mark_in_progress: bool,
+    control_date: bool,
 ) -> CmdResult<ExportOutcome> {
     let events = app.clone();
     run(&app, move |g| {
@@ -544,10 +553,17 @@ pub async fn export_html(
             keys: keys.map(|k| k.into_iter().collect::<BTreeSet<_>>()),
             out_dir: None,
             mark_in_progress,
+            control_date,
         };
         let mut progress = |done: usize, total: usize| emit_progress(&events, "export", done, total);
         let r = g.exports().export_html(&project_code, &opts, Some(&mut progress))?;
-        Ok(ExportOutcome { path: r.path, summary: r.summary, marked: r.marked, content: None })
+        Ok(ExportOutcome {
+            path: r.path,
+            summary: r.summary,
+            marked: r.marked,
+            control_dated: r.control_dated,
+            content: None,
+        })
     })
     .await
 }
@@ -564,7 +580,13 @@ pub async fn export_claude(
     run(&app, move |g| {
         let opts = ClaudeOptions { since, all_notes, include_unassigned, note_ids, output: None };
         let r = g.exports().export_claude(&project_code, &opts)?;
-        Ok(ExportOutcome { path: r.path, summary: r.summary, marked: vec![], content: Some(r.content) })
+        Ok(ExportOutcome {
+            path: r.path,
+            summary: r.summary,
+            marked: vec![],
+            control_dated: 0,
+            content: Some(r.content),
+        })
     })
     .await
 }
