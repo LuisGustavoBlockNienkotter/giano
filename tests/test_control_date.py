@@ -114,7 +114,8 @@ def test_cli_export_html_sets_control_date_by_default(g, project, three):
     assert _control(g, three[0].item_id) is None
     res = cli(g, "export", "html", "-p", "MERC", "-i", "2")
     assert res.exit_code == 0, res.output
-    assert "data de controle" in res.output
+    # Rich wraps at 80 columns and the temp path length varies (longer on CI).
+    assert "data de controle" in " ".join(res.output.split())
     assert _control(g, three[1].item_id) is not None and _control(g, three[0].item_id) is None
 
 
