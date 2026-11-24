@@ -20,6 +20,7 @@ TABLES = (
     "tags",
     "item_version_tags",
     "settings",
+    "repo_checks",
 )
 _MAX_PARAMS = 900  # stay below SQLite's oldest limit (999 bound values per statement)
 

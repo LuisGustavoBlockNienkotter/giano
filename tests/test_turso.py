@@ -230,3 +230,21 @@ def test_tui_survives_a_dropped_connection(g, backend, project, monkeypatch):
             ]
 
     asyncio.run(scenario())
+
+
+def test_copy_keeps_repository_link_and_checks(source, g):
+    """V6 (desktop app): the remote URL of a project and its checks go to the copy too."""
+    p = source.projects.require("MERC")
+    with source.db.transaction():
+        source.db.execute(
+            "UPDATE projects SET repo_remote = 'https://github.com/csg/merc.git' WHERE id = ?", (p.id,)
+        )
+        source.db.execute(
+            "INSERT INTO repo_checks (project_id, from_commit, to_commit, branch, commit_count,"
+            " summary, result, created_at) VALUES (?, NULL, 'abc', 'main', 1, 'Resumo', '{}', 'x')",
+            (p.id,),
+        )
+    counts = source.copy_to(g)
+    assert counts["repo_checks"] == 1
+    row = g.db.query_one("SELECT repo_remote FROM projects WHERE code = 'MERC'")
+    assert row["repo_remote"] == "https://github.com/csg/merc.git"

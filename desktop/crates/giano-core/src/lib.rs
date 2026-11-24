@@ -4,10 +4,13 @@
 //! It reads and writes the same database and the same `config.json`, so the Python TUI and
 //! the desktop app can be used side by side. No UI code lives here.
 
+pub mod claude_cli;
 pub mod config;
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod git;
+pub mod process;
 pub mod services;
 
 pub use error::{Error, Result};

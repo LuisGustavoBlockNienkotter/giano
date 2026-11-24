@@ -8,6 +8,8 @@
   import ItemsView from "./views/ItemsView.svelte";
   import NotesView from "./views/NotesView.svelte";
   import RevisionsView from "./views/RevisionsView.svelte";
+  import RepoView from "./views/RepoView.svelte";
+  import CheckDialog from "./views/CheckDialog.svelte";
   import SettingsView from "./views/SettingsView.svelte";
   import ItemEditor from "./views/ItemEditor.svelte";
   import ProjectDialog from "./views/ProjectDialog.svelte";
@@ -112,6 +114,8 @@
         <NotesView />
       {:else if store.view === "revisions"}
         <RevisionsView />
+      {:else if store.view === "repo"}
+        <RepoView />
       {:else}
         <ItemsView />
       {/if}
@@ -125,4 +129,5 @@
 {#if store.exportHtml}<ExportHtmlDialog />{/if}
 {#if store.exportClaude}<ExportClaudeDialog noteIds={store.exportClaude?.noteIds ?? null} />{/if}
 {#if store.searchOpen}<SearchPalette />{/if}
+{#if store.checkDialog}{#key store.checkDialog.id}<CheckDialog check={store.checkDialog} />{/key}{/if}
 <Overlays />

@@ -164,12 +164,34 @@ V5 = """
 ALTER TABLE items ADD COLUMN control_date TEXT;
 """
 
+# Repository of a project (desktop app): ``projects.repo_remote`` is the git remote URL
+# (shared, without credentials; the local folder is per computer, in config.json).
+# ``repo_checks`` keeps each "Atualizar e verificar": the commit range analyzed
+# (``from_commit`` NULL = no previous check), Claude's summary (Markdown) and the result
+# (JSON: commits, items touched, changes without an item). Nothing here changes items.
+V6 = """
+ALTER TABLE projects ADD COLUMN repo_remote TEXT NOT NULL DEFAULT '';
+CREATE TABLE repo_checks (
+    id           INTEGER PRIMARY KEY,
+    project_id   INTEGER NOT NULL REFERENCES projects(id),
+    from_commit  TEXT,
+    to_commit    TEXT    NOT NULL,
+    branch       TEXT    NOT NULL DEFAULT '',
+    commit_count INTEGER NOT NULL,
+    summary      TEXT    NOT NULL,
+    result       TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL
+);
+CREATE INDEX repo_checks_project ON repo_checks (project_id, id);
+"""
+
 MIGRATIONS: list[tuple[int, str]] = [
     (1, V1),
     (2, V2),
     (3, V3),
     (4, V4),
     (5, V5),
+    (6, V6),
 ]
 
 

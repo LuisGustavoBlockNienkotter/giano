@@ -13,6 +13,7 @@ fn row(r: &Row) -> Project {
         description: r.get("description"),
         active: r.get("active"),
         created_at: r.get("created_at"),
+        repo_remote: r.get("repo_remote"),
     }
 }
 
@@ -30,6 +31,11 @@ pub fn update(db: &Database, id: i64, code: &str, name: &str, description: &str,
         "UPDATE projects SET code = ?, name = ?, description = ?, active = ? WHERE id = ?",
         params![code, name, description, active, id],
     )?;
+    Ok(())
+}
+
+pub fn set_repo_remote(db: &Database, id: i64, remote: &str) -> Result<()> {
+    db.execute("UPDATE projects SET repo_remote = ? WHERE id = ?", params![remote, id])?;
     Ok(())
 }
 

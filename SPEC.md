@@ -157,6 +157,83 @@ numa conversa com o Claude e analisar as anotações à luz do estado do projeto
   controle, em qualquer revisão exportada, sem gerar revisão. Projeto arquivado não muda.
   Se o arquivo não puder ser gravado, nenhuma data muda.
 
+### Repositório do projeto e verificação com o Claude (app desktop)
+Só no app desktop (a TUI está congelada). Tela "Repositório" de cada projeto, na barra lateral.
+
+**Vínculo com o repositório**
+- Um projeto pode ser vinculado a um repositório local. Como o banco pode ser compartilhado
+  (Turso) e a pasta muda de computador para computador, o vínculo tem duas partes:
+  - no banco (compartilhado): `projects.repo_remote`, a URL do remote git, opcional
+    (migração V6 em `migrations.py` e `migrations.rs`). Serve para outro computador saber
+    que o projeto tem repositório e pedir a pasta local;
+  - no `config.json` (por computador): a pasta local de cada projeto, pela sigla
+    (`"repo.MERC": "C:\\dev\\mercurio"`), como o `export_dir`. Mudar a sigla do projeto
+    leva a chave junto (neste computador).
+- Escolher uma subpasta vincula a raiz do repositório. O app detecta se a pasta é um
+  repositório git (branch, upstream, remote, arquivos não commitados). O botão
+  "Atualizar e verificar" só aparece quando é. Desvincular vale só para o computador.
+- **Referência a arquivos**: no Markdown do item, `` `src/foo.rs:42` `` (só quando o arquivo
+  existe no repositório) ou `[texto](repo:src/foo.rs#L42)` vira um link que abre o arquivo
+  no editor, na linha. Editor: `editor` no `config.json` (Configurações), senão VS Code ou
+  Zed se instalados, senão o programa padrão. Caminhos fora da pasta são recusados. As
+  referências também ajudam a verificação: um item que cita `foo.rs` e um pull que mexe em
+  `foo.rs` têm uma ligação forte. (A exportação HTML não transforma esses links.)
+
+**Atualizar e verificar**
+1. Anota o HEAD atual e roda `git pull --ff-only`. Se a pasta tem mudanças locais ou o pull
+   não é fast-forward, mostra o erro do git e não força nada; posso verificar sem atualizar.
+2. Intervalo analisado: **desde a última verificação** do projeto (último commit verificado),
+   não só o último pull. Assim um pull feito pelo terminal também é analisado. Sem commits
+   novos: "Nenhum commit novo desde a verificação de DD/MM/AAAA HH:MM". Se o último commit
+   verificado não está no histórico (outro branch, histórico reescrito), vale o que o pull
+   trouxe; sem nada disso (primeira verificação), os 20 commits mais recentes. No máximo
+   50 commits por verificação (os mais recentes).
+3. Antes do Claude, uma ligação determinística: commits que citam o código do item na
+   mensagem (`MERC-33`, `MERC-33.1`) entram como "citado no commit".
+4. O Claude recebe o intervalo de commits e a lista de itens (não arquivados e não
+   descartados, inclusive os concluídos) e devolve um JSON:
+   ```json
+   {
+     "resumo": "markdown do que foi feito",
+     "itens": [
+       { "codigo": "MERC-33.1", "relacao": "resolve | avanca | relacionado",
+         "justificativa": "...", "commits": ["abc123"], "arquivos": ["src/foo.rs"] }
+     ],
+     "sem_item": ["mudanças que não correspondem a nenhum item"]
+   }
+   ```
+5. **O Claude nunca altera itens.** Ele recebe a lista no prompt, não tem acesso ao `giano`
+   e só lê o repositório (`Read`, `Grep`, `Glob`, `git log/diff/show`). Quem grava é sempre
+   o app, quando eu clico.
+- Chamada: **Claude Code CLI** em modo não interativo, rodando na pasta do repositório:
+  `claude -p … --output-format json --json-schema … --permission-mode dontAsk
+  --allowedTools Read,Grep,Glob,Bash(git log/show/diff *) --disallowedTools Edit,Write,…
+  --max-turns 40`, com o pedido pela entrada padrão. Usa a minha assinatura e abre arquivos
+  e diffs quando precisa. O executável vem de `claude_path` no `config.json`
+  (Configurações), senão do PATH ou das pastas dos instaladores; se não houver, o app avisa.
+  Leva de 30 s a alguns minutos (limite de 15): mostra o passo, pode ser cancelada e não
+  prende o banco (dá para usar o Giano enquanto isso).
+- Cada verificação fica guardada no banco (`repo_checks`: projeto, commit inicial e final,
+  data, resumo e o JSON do resultado), visível nos outros computadores e consultável depois.
+
+**Resultado na tela**
+- Painel "Verificação" com o resumo em Markdown, os itens atingidos (código, relação,
+  justificativa, commits, arquivos) e as mudanças sem item. A tela "Repositório" lista as
+  verificações anteriores; cada uma reabre o painel.
+- Todo código de item, na lista ou dentro do texto do resumo, é um link: clicar abre o
+  mesmo menu de status da tecla `S` ("Mudar status de MERC-33.1"). Quando o Claude diz
+  "resolve", "Concluído" aparece destacado como sugestão ("avanca": Em desenvolvimento),
+  nunca aplicado sozinho.
+- As mudanças de status feitas a partir de uma verificação ficam agrupadas numa revisão
+  só: na primeira, se o projeto não tem revisão aberta, o app abre uma; ao fechar o painel
+  da verificação, ele a fecha com o resumo "Pull abc1234..def5678". Se eu já tinha uma
+  revisão aberta, as mudanças entram nela e ela continua aberta (só pode haver uma por
+  projeto).
+- GitHub: não é necessário (o `git` local faz o pull com as minhas credenciais). A URL do
+  remote (GitHub, GitLab ou Bitbucket) só serve para abrir os commits no site, sem API.
+- CLI: sem comando novo por enquanto; a migração V6 vai para os dois lados para o CLI não
+  quebrar no banco compartilhado.
+
 ## Interface (TUI)
 - Barra lateral com os projetos; área principal com a tabela de itens (ordenável e
   filtrável por tipo, status, prioridade e tag); painel de pré-visualização Markdown

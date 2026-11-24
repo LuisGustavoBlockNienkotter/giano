@@ -11,6 +11,7 @@
     ChevronRight,
     Archive,
     Pencil,
+    FolderGit2,
   } from "@lucide/svelte";
   import { store, type View } from "../lib/state.svelte";
 
@@ -22,6 +23,7 @@
     { view: "items", label: "Itens", icon: ListTodo },
     { view: "notes", label: "Anotações", icon: NotebookPen },
     { view: "revisions", label: "Revisões", icon: History },
+    { view: "repo", label: "Repositório", icon: FolderGit2 },
   ];
 
   function dbName(): string {

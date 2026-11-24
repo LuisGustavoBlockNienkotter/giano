@@ -11,8 +11,18 @@ use crate::error::Result;
 use crate::params;
 
 /// Parents before children (foreign keys).
-pub const TABLES: [&str; 9] =
-    ["projects", "notes", "items", "revisions", "revision_changes", "item_versions", "tags", "item_version_tags", "settings"];
+pub const TABLES: [&str; 10] = [
+    "projects",
+    "notes",
+    "items",
+    "revisions",
+    "revision_changes",
+    "item_versions",
+    "tags",
+    "item_version_tags",
+    "settings",
+    "repo_checks",
+];
 
 /// Stay below SQLite's oldest limit (999 bound values per statement).
 const MAX_PARAMS: usize = 900;
