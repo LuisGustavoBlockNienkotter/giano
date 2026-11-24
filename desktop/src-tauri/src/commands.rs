@@ -3,6 +3,8 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -13,7 +15,10 @@ use giano_core::db::notes::NoteFilter;
 use giano_core::domain::{
     Choice, ItemData, ItemStatus, ItemType, ItemView, Note, NoteStatus, Priority, Project, Revision, RevisionDiff,
 };
+use giano_core::claude_cli;
+use giano_core::domain::RepoCheck;
 use giano_core::services::exports::{ClaudeOptions, HtmlOptions};
+use giano_core::services::repo::{self as repo_service, Analysis, RepoInfo};
 use giano_core::services::formatting::{diff_markdown, item_preview};
 use giano_core::services::items::Archived;
 use giano_core::services::markdown;
@@ -212,7 +217,16 @@ pub async fn update_project(
     description: String,
     active: bool,
 ) -> CmdResult<Project> {
-    run(&app, move |g| Ok(g.projects().update(id, &code, &name, &description, active)?)).await
+    run(&app, move |g| {
+        let before = g.projects().get(id)?;
+        let project = g.projects().update(id, &code, &name, &description, active)?;
+        // The repository folder on this computer is kept by code (config.json): it follows.
+        if let Some(before) = before {
+            config::rename_repo_path(&before.code, &project.code)?;
+        }
+        Ok(project)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -611,6 +625,12 @@ pub struct SettingsView {
     export_dir: String,
     claude_prompt: String,
     default_claude_prompt: &'static str,
+    /// Per computer (config.json): program that opens files of a repository ("" = automatic).
+    editor: String,
+    /// Per computer: full path of Claude Code ("" = found automatically).
+    claude_path: String,
+    /// The Claude Code executable found (None = not installed / not found).
+    claude_found: Option<String>,
 }
 
 #[tauri::command]
@@ -621,6 +641,9 @@ pub async fn get_settings(app: AppHandle) -> CmdResult<SettingsView> {
             export_dir: s.export_dir()?.display().to_string(),
             claude_prompt: s.claude_prompt()?,
             default_claude_prompt: DEFAULT_CLAUDE_PROMPT,
+            editor: config::config_value(config::EDITOR)?.unwrap_or_default(),
+            claude_path: config::config_value(config::CLAUDE_PATH)?.unwrap_or_default(),
+            claude_found: claude_cli::find().map(|p| p.display().to_string()),
         })
     })
     .await
@@ -709,6 +732,129 @@ pub async fn turso_push_local(app: AppHandle) -> CmdResult<String> {
 #[tauri::command]
 pub async fn create_demo(app: AppHandle) -> CmdResult<Vec<String>> {
     run(&app, |g| Ok(giano_core::services::demo::create_demo(g)?)).await
+}
+
+/// Per-computer settings kept in config.json (`editor`, `claude_path`); "" or None removes.
+#[tauri::command]
+pub async fn set_local_setting(key: String, value: Option<String>) -> CmdResult<()> {
+    blocking(move || {
+        let key = match key.as_str() {
+            "editor" => config::EDITOR,
+            "claude_path" => config::CLAUDE_PATH,
+            _ => return Err(CmdError::new("validation", "Configuração desconhecida.")),
+        };
+        let value = value.map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        config::save_config(&[(key, value.as_deref())])?;
+        Ok(())
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// Repository of a project ("Atualizar e verificar")
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn repo_info(app: AppHandle, project_id: i64) -> CmdResult<RepoInfo> {
+    run(&app, move |g| Ok(g.repo().info(project_id)?)).await
+}
+
+#[tauri::command]
+pub async fn link_repo(app: AppHandle, project_id: i64, path: String) -> CmdResult<RepoInfo> {
+    run(&app, move |g| Ok(g.repo().link(project_id, &path)?)).await
+}
+
+#[tauri::command]
+pub async fn unlink_repo(app: AppHandle, project_id: i64) -> CmdResult<()> {
+    run(&app, move |g| Ok(g.repo().unlink(project_id)?)).await
+}
+
+#[tauri::command]
+pub async fn list_repo_checks(app: AppHandle, project_id: i64) -> CmdResult<Vec<RepoCheck>> {
+    run(&app, move |g| Ok(g.repo().checks(project_id, 50)?)).await
+}
+
+#[derive(Serialize)]
+pub struct CheckOutcome {
+    /// The new check; None = no commit since the last one.
+    check: Option<RepoCheck>,
+    /// Output of the pull (when there was one and nothing new came).
+    pull: Option<String>,
+    /// When the last check was made (nothing new).
+    since: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct RepoCheckEvent {
+    project_id: i64,
+    message: String,
+}
+
+/// Pull (optional) + Claude. The database is only held to read the plan and to store the
+/// result: the analysis (minutes) runs without it. Emits `repo_check` events with each step.
+#[tauri::command]
+pub async fn run_repo_check(app: AppHandle, project_id: i64, pull: bool) -> CmdResult<CheckOutcome> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let state = app.state::<AppState>();
+        let mut slot = state.repo_check.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.is_some() {
+            return Err(CmdError::new("validation", "Já há uma verificação em andamento."));
+        }
+        *slot = Some(cancel.clone());
+    }
+    let result = check_steps(&app, project_id, pull, cancel).await;
+    *app.state::<AppState>().repo_check.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    result
+}
+
+async fn check_steps(app: &AppHandle, project_id: i64, pull: bool, cancel: Arc<AtomicBool>) -> CmdResult<CheckOutcome> {
+    let plan = run(app, move |g| Ok(g.repo().prepare(project_id)?)).await?;
+    let events = app.clone();
+    let analysis = blocking(move || {
+        let mut progress = |m: &str| {
+            let _ = events.emit("repo_check", RepoCheckEvent { project_id, message: m.to_string() });
+        };
+        Ok(repo_service::analyze(&plan, pull, Some(&cancel), &mut progress)?)
+    })
+    .await?;
+    match analysis {
+        Analysis::NothingNew { pull, since } => Ok(CheckOutcome { check: None, pull, since }),
+        Analysis::Done { from, to, branch, summary, result } => {
+            let check = run(app, move |g| {
+                Ok(g.repo().save(project_id, from.as_deref(), &to, &branch, &summary, &result)?)
+            })
+            .await?;
+            Ok(CheckOutcome { check: Some(check), pull: None, since: None })
+        }
+    }
+}
+
+#[tauri::command]
+pub fn cancel_repo_check(app: AppHandle) {
+    if let Some(flag) = app.state::<AppState>().repo_check.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        flag.store(true, Ordering::SeqCst);
+    }
+}
+
+/// The paths (relative to the repository) that exist: the interface links only those.
+#[tauri::command]
+pub async fn repo_files_exist(app: AppHandle, project_id: i64, paths: Vec<String>) -> CmdResult<Vec<String>> {
+    run(&app, move |g| Ok(g.repo().existing_files(project_id, &paths)?)).await
+}
+
+/// Open a file of the repository in the editor (or with the default program).
+#[tauri::command]
+pub async fn open_repo_file(app: AppHandle, project_id: i64, path: String, line: Option<u32>) -> CmdResult<()> {
+    let file = run(&app, move |g| Ok(g.repo().resolve_file(project_id, &path)?)).await?;
+    let target = file.clone();
+    let opened = blocking(move || Ok(repo_service::open_in_editor(&target, line)?)).await?;
+    if !opened {
+        app.opener()
+            .open_path(file.display().to_string(), None::<&str>)
+            .map_err(|e| CmdError::new("validation", e.to_string()))?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

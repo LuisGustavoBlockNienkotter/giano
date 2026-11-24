@@ -10,4 +10,7 @@ pub struct Project {
     pub description: String,
     pub active: bool,
     pub created_at: String,
+    /// The git remote of the project's repository (shared, without credentials; "" = none).
+    /// The local folder is per computer (`config::repo_path`).
+    pub repo_remote: String,
 }

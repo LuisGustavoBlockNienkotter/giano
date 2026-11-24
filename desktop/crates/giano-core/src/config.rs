@@ -9,7 +9,9 @@
 //! 4. The local file in the user's data directory.
 //!
 //! `config.json` lives in the user's config directory (`GIANO_CONFIG_DIR` overrides it) and
-//! holds only what belongs to this computer: the Turso connection and the export folder.
+//! holds only what belongs to this computer: the Turso connection, the export folder, the
+//! local folder of each project's repository (`repo.<SIGLA>`), the editor that opens its files
+//! and where Claude Code is.
 
 use std::collections::BTreeMap;
 use std::env;
@@ -23,6 +25,12 @@ pub const CONFIG_FILE: &str = "config.json";
 pub const TURSO_URL: &str = "turso_url";
 pub const TURSO_TOKEN: &str = "turso_token";
 pub const EXPORT_DIR: &str = "export_dir";
+/// `repo.MERC`: local folder of the repository of project MERC on this computer.
+pub const REPO_PREFIX: &str = "repo.";
+/// Program that opens files of a repository (`code`, `zed`...; empty = automatic).
+pub const EDITOR: &str = "editor";
+/// Full path of the Claude Code executable (empty = found on the PATH).
+pub const CLAUDE_PATH: &str = "claude_path";
 
 fn non_empty_env(name: &str) -> Option<String> {
     env::var(name).ok().filter(|v| !v.is_empty())
@@ -128,6 +136,37 @@ pub fn save_config(changes: &[(&str, Option<&str>)]) -> Result<PathBuf> {
     }
     fs::rename(&tmp, &path)?;
     Ok(path)
+}
+
+/// The local folder of a project's repository on this computer.
+pub fn repo_path(project_code: &str) -> Result<Option<PathBuf>> {
+    let key = format!("{REPO_PREFIX}{}", project_code.to_uppercase());
+    Ok(load_config()?.get(&key).filter(|p| !p.trim().is_empty()).map(|p| expand_user(p.trim())))
+}
+
+/// Link (`Some`) or unlink (`None`) the repository folder of a project on this computer.
+pub fn set_repo_path(project_code: &str, path: Option<&str>) -> Result<()> {
+    let key = format!("{REPO_PREFIX}{}", project_code.to_uppercase());
+    save_config(&[(key.as_str(), path)])?;
+    Ok(())
+}
+
+/// A project changed its code: its repository folder follows it.
+pub fn rename_repo_path(old_code: &str, new_code: &str) -> Result<()> {
+    if old_code.eq_ignore_ascii_case(new_code) {
+        return Ok(());
+    }
+    if let Some(path) = repo_path(old_code)? {
+        let path = path.to_string_lossy().into_owned();
+        let old_key = format!("{REPO_PREFIX}{}", old_code.to_uppercase());
+        let new_key = format!("{REPO_PREFIX}{}", new_code.to_uppercase());
+        save_config(&[(old_key.as_str(), None), (new_key.as_str(), Some(path.as_str()))])?;
+    }
+    Ok(())
+}
+
+pub fn config_value(key: &str) -> Result<Option<String>> {
+    Ok(load_config()?.get(key).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()))
 }
 
 // ---------------------------------------------------------------------------

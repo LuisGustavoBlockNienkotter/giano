@@ -2,6 +2,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "./api";
+import { formatDate } from "./format";
 import type {
   AppStatus,
   ItemData,
@@ -10,13 +11,15 @@ import type {
   ProgressEvent,
   Project,
   ProjectView,
+  RepoCheck,
+  RepoInfo,
   PriorityValue,
   StatusValue,
   ItemTypeValue,
   NoteStatusValue,
 } from "./types";
 
-export type View = "items" | "notes" | "revisions" | "settings";
+export type View = "items" | "notes" | "revisions" | "repo" | "settings";
 
 export type EditorRequest =
   | { mode: "new"; projectId: number; sourceNoteId?: number | null; initial?: Partial<ItemData> }
@@ -74,6 +77,14 @@ class Store {
   /** Note to open when the notes view shows up (search result, quick note). */
   pendingNoteId = $state<number | null>(null);
 
+  /** Repository of the selected project on this computer (loaded by the repository view). */
+  repoInfo = $state<RepoInfo | null>(null);
+  repoChecks = $state<RepoCheck[]>([]);
+  /** The "Atualizar e verificar" running (it keeps running while other screens are used). */
+  repoRun = $state<{ projectId: number; message: string } | null>(null);
+  /** The check whose result is open (item links change status from it). */
+  checkDialog = $state<RepoCheck | null>(null);
+
   toasts = $state<Toast[]>([]);
   dialogs = $state<DialogRequest[]>([]);
   busy = $state<Busy | null>(null);
@@ -103,6 +114,9 @@ class Store {
   // -- loading --------------------------------------------------------------
 
   async init() {
+    listen<{ project_id: number; message: string }>("repo_check", (e) => {
+      if (this.repoRun?.projectId === e.payload.project_id) this.repoRun = { ...this.repoRun, message: e.payload.message };
+    });
     listen<ProgressEvent>("progress", (e) => {
       if (this.busy) {
         this.busy = { ...this.busy, task: e.payload.task, done: e.payload.done, total: e.payload.total };
@@ -139,6 +153,8 @@ class Store {
     this.viewRev = null;
     this.showArchive = false;
     this.selectedItemId = null;
+    this.repoInfo = null;
+    this.repoChecks = [];
     try {
       localStorage.setItem("giano.project", String(id));
     } catch {
@@ -166,6 +182,58 @@ class Store {
     this.viewRev = rev;
     this.view = "items";
     await this.loadProject();
+  }
+
+  // -- repository ------------------------------------------------------------
+
+  async loadRepo() {
+    const id = this.projectId;
+    if (id == null) return;
+    try {
+      const [info, checks] = await Promise.all([api.repoInfo(id), api.listRepoChecks(id)]);
+      if (id !== this.projectId) return;
+      this.repoInfo = info;
+      this.repoChecks = checks;
+    } catch (e) {
+      this.toast(errorMessage(e), "error");
+    }
+  }
+
+  /** "Atualizar e verificar" (`pull`) or "Verificar sem atualizar". A refused pull offers to
+   * verify without it. The result opens in the check dialog. */
+  async runCheck(pull: boolean): Promise<void> {
+    const id = this.projectId;
+    if (id == null || this.repoRun) return;
+    this.repoRun = { projectId: id, message: pull ? "Atualizando o repositório (git pull)…" : "Lendo os commits…" };
+    try {
+      const out = await api.runRepoCheck(id, pull);
+      if (out.check) {
+        if (this.projectId !== id) await this.selectProject(id);
+        this.viewRev = null;
+        await this.loadProject();
+        this.checkDialog = out.check;
+        const n = out.check.result.items.length;
+        this.toast(`Verificação concluída: ${n === 1 ? "1 item tocado" : `${n} itens tocados`}.`);
+      } else {
+        const since = out.since ? ` desde a verificação de ${formatDate(out.since)}` : "";
+        this.toast(`Nenhum commit novo${since}.`, "info");
+      }
+    } catch (e) {
+      const message = errorMessage(e);
+      if (pull && message.startsWith("O git pull não foi feito")) {
+        this.repoRun = null;
+        const ok = await this.confirm(message, {
+          title: "Pull não feito",
+          confirmLabel: "Verificar sem atualizar",
+        });
+        if (ok) return this.runCheck(false);
+      } else if (message !== "Cancelado.") {
+        this.toast(message, "error");
+      }
+    } finally {
+      this.repoRun = null;
+      if (this.projectId === id) await this.loadRepo();
+    }
   }
 
   onRefresh(fn: () => Promise<void> | void) {
@@ -242,6 +310,7 @@ class Store {
       this.exportHtml ||
       !!this.revisionDialog ||
       !!this.exportClaude ||
+      !!this.checkDialog ||
       this.searchOpen ||
       this.dialogs.length > 0 ||
       !!this.busy

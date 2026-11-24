@@ -3,7 +3,8 @@
 
 mod commands;
 
-use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 use giano_core::config::{resolve_db_target, DbTarget};
 use giano_core::{system_clock, Giano};
@@ -13,6 +14,8 @@ use giano_core::{system_clock, Giano};
 pub struct AppState {
     pub giano: Mutex<Option<Giano>>,
     pub error: Mutex<Option<String>>,
+    /// Cancel flag of the repository check running (pull + Claude), if any.
+    pub repo_check: Mutex<Option<Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -41,7 +44,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState { giano: Mutex::new(giano), error: Mutex::new(error) })
+        .manage(AppState { giano: Mutex::new(giano), error: Mutex::new(error), repo_check: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![
             commands::app_status,
             commands::reconnect,
@@ -88,6 +91,15 @@ pub fn run() {
             commands::turso_disconnect,
             commands::turso_push_local,
             commands::create_demo,
+            commands::repo_info,
+            commands::link_repo,
+            commands::unlink_repo,
+            commands::list_repo_checks,
+            commands::run_repo_check,
+            commands::cancel_repo_check,
+            commands::repo_files_exist,
+            commands::open_repo_file,
+            commands::set_local_setting,
             commands::open_path,
             commands::reveal_path,
         ])

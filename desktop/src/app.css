@@ -124,6 +124,17 @@ textarea.input {
 .md table {
   font-size: 13px;
 }
+/* A file of the project's repository (opens in the editor). */
+.md a.repo-link {
+  @apply cursor-pointer no-underline decoration-dotted underline-offset-2 hover:underline;
+}
+.md a.repo-link > code {
+  @apply text-accent-700 dark:text-accent-300;
+}
+/* An item code of the project (opens the status menu). */
+.md button.item-link {
+  @apply cursor-pointer rounded bg-accent-50 px-1 font-mono text-[0.92em] font-medium text-accent-700 ring-1 ring-accent-200 hover:bg-accent-100 dark:bg-accent-500/15 dark:text-accent-300 dark:ring-accent-500/30 dark:hover:bg-accent-500/25;
+}
 pre.highlight .hl-code {
   background: transparent !important;
 }

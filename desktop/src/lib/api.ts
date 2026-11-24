@@ -16,6 +16,9 @@ import type {
   Project,
   ProjectView,
   Revision,
+  RepoCheck,
+  RepoInfo,
+  CheckOutcome,
   SearchHit,
   SettingsView,
   StatusValue,
@@ -112,6 +115,20 @@ export const api = {
   tursoDisconnect: () => invoke<AppStatus>("turso_disconnect"),
   tursoPushLocal: () => invoke<string>("turso_push_local"),
   createDemo: () => invoke<string[]>("create_demo"),
+
+  setLocalSetting: (key: "editor" | "claude_path", value: string | null) =>
+    invoke<void>("set_local_setting", { key, value }),
+
+  repoInfo: (projectId: number) => invoke<RepoInfo>("repo_info", { projectId }),
+  linkRepo: (projectId: number, path: string) => invoke<RepoInfo>("link_repo", { projectId, path }),
+  unlinkRepo: (projectId: number) => invoke<void>("unlink_repo", { projectId }),
+  listRepoChecks: (projectId: number) => invoke<RepoCheck[]>("list_repo_checks", { projectId }),
+  /** Pull (optional) + Claude; emits `repo_check` events. Minutes. */
+  runRepoCheck: (projectId: number, pull: boolean) => invoke<CheckOutcome>("run_repo_check", { projectId, pull }),
+  cancelRepoCheck: () => invoke<void>("cancel_repo_check"),
+  repoFilesExist: (projectId: number, paths: string[]) => invoke<string[]>("repo_files_exist", { projectId, paths }),
+  openRepoFile: (projectId: number, path: string, line: number | null) =>
+    invoke<void>("open_repo_file", { projectId, path, line }),
 
   openPath: (path: string) => invoke<void>("open_path", { path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

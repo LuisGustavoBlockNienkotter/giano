@@ -12,6 +12,8 @@
   let tursoUrl = $state("");
   let tursoToken = $state("");
   let canPush = $state(false);
+  let editor = $state("");
+  let claudePath = $state("");
 
   let promptDirty = $derived(!!settings && prompt !== settings.claude_prompt);
   let isDefaultPrompt = $derived(!!settings && prompt.trim() === settings.default_claude_prompt.trim());
@@ -21,6 +23,8 @@
       settings = await api.getSettings();
       exportDir = settings.export_dir;
       prompt = settings.claude_prompt;
+      editor = settings.editor;
+      claudePath = settings.claude_path;
     } catch (e) {
       store.toast(errorMessage(e), "error");
     }
@@ -56,6 +60,24 @@
       store.toast("Template do pedido de análise salvo.");
     } catch (e) {
       store.toast(errorMessage(e), "error");
+    }
+  }
+
+  async function saveLocal(key: "editor" | "claude_path", value: string | null) {
+    try {
+      await api.setLocalSetting(key, value);
+      await load();
+      store.toast(key === "editor" ? "Editor salvo." : "Caminho do Claude Code salvo.");
+    } catch (e) {
+      store.toast(errorMessage(e), "error");
+    }
+  }
+
+  async function chooseClaude() {
+    const file = await openDialog({ title: "Executável do Claude Code", filters: [{ name: "Programas", extensions: ["exe", "cmd", "bat"] }] });
+    if (typeof file === "string") {
+      claudePath = file;
+      await saveLocal("claude_path", file);
     }
   }
 
@@ -147,6 +169,32 @@
       <div class="mt-3 flex justify-end gap-2">
         <button class="btn-ghost" onclick={() => savePrompt(null)} disabled={isDefaultPrompt}><RotateCcw size={14} /> Restaurar o padrão</button>
         <button class="btn-primary" onclick={() => savePrompt()} disabled={!promptDirty}><Save size={14} /> Salvar</button>
+      </div>
+    </section>
+
+    <section class="card p-5">
+      <h2 class="text-[14px] font-semibold">Repositórios e Claude Code</h2>
+      <p class="mt-0.5 text-xs text-zinc-500">Valem só para este computador (ficam em {store.status?.config_path}).</p>
+      <div class="mt-3 space-y-3">
+        <div>
+          <label class="field-label" for="editor">Editor que abre os arquivos citados nos itens</label>
+          <div class="flex gap-2">
+            <input id="editor" class="input" bind:value={editor} placeholder="Automático (VS Code ou Zed, se instalados; senão o programa padrão)" onkeydown={(e) => e.key === "Enter" && saveLocal("editor", editor)} />
+            <button class="btn-secondary" onclick={() => saveLocal("editor", editor)} disabled={editor === (settings?.editor ?? "")}><Save size={14} /> Salvar</button>
+          </div>
+          <p class="mt-1 text-[11px] text-zinc-400">Nome ou caminho do programa: <code>code</code>, <code>zed</code>, <code>cursor</code>… Abre na linha citada (<code>arquivo.rs:42</code>).</p>
+        </div>
+        <div>
+          <label class="field-label" for="claude">Claude Code (usado por "Atualizar e verificar")</label>
+          <div class="flex gap-2">
+            <input id="claude" class="input font-mono text-[12.5px]" bind:value={claudePath} placeholder={settings?.claude_found ?? "Não encontrado: instale o Claude Code"} onkeydown={(e) => e.key === "Enter" && saveLocal("claude_path", claudePath)} />
+            <button class="btn-secondary" onclick={chooseClaude}><FolderOpen size={14} /> Escolher</button>
+            <button class="btn-ghost" onclick={() => { claudePath = ""; saveLocal("claude_path", null); }} title="Encontrar automaticamente"><RotateCcw size={14} /></button>
+          </div>
+          <p class="mt-1 text-[11px] {settings?.claude_found ? 'text-zinc-400' : 'text-amber-600'}">
+            {settings?.claude_found ? `Em uso: ${settings.claude_found}` : "Não encontrado. Instale o Claude Code e faça login rodando claude uma vez no terminal."}
+          </p>
+        </div>
       </div>
     </section>
 

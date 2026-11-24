@@ -76,7 +76,10 @@ database and `config.json` (same paths as `platformdirs`), so both can run side 
 desktop/
   crates/giano-core/   Rust port of domain.py + db/ + services/ (rusqlite bundled for local
                        files, a small Hrana-over-HTTP client in db/remote.rs for Turso,
-                       pulldown-cmark + syntect for Markdown, minijinja for export.html.j2)
+                       pulldown-cmark + syntect for Markdown, minijinja for export.html.j2).
+                       Desktop-only: services/repo.rs (project repository + "Atualizar e
+                       verificar"), git.rs, claude_cli.rs (`claude -p`, read-only tools),
+                       process.rs (PATH lookup, no console window, cancel/timeout)
     tests/             port of the pytest service tests (`cargo test -p giano-core`)
   src-tauri/           Tauri app: commands.rs = thin async commands over giano-core
                        (spawn_blocking, errors as {kind, message}, `progress` events)
@@ -92,6 +95,11 @@ desktop/
   takes a closure (nestable); `Database::session` keeps one Turso stream.
 - The UI never formats domain labels itself: `meta` gives the enum labels; Markdown is
   rendered by the `render_markdown` command (same renderer as the HTML export).
+- Repository of a project (desktop only, SPEC "Repositório do projeto"): the local folder is
+  per computer (`config.json` key `repo.<SIGLA>`), `projects.repo_remote` is shared; each check
+  is a `repo_checks` row (V6). A check NEVER changes items: `run_repo_check` reads the plan,
+  runs pull + Claude WITHOUT holding the database, then stores the result; status changes
+  from the check dialog go into one revision ("Pull abc..def") opened/closed by the dialog.
 
 ## Revision model (core invariant)
 

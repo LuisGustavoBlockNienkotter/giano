@@ -13,6 +13,7 @@ pub mod migrations;
 pub mod notes;
 pub mod projects;
 pub mod remote;
+pub mod repo_checks;
 pub mod search;
 pub mod settings;
 pub mod transfer;

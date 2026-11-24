@@ -44,6 +44,8 @@ export interface Project {
   description: string;
   active: boolean;
   created_at: string;
+  /** git remote of the project's repository (shared; "" = none). */
+  repo_remote: string;
 }
 
 /** The net change of one item in a revision. */
@@ -176,6 +178,11 @@ export interface SettingsView {
   export_dir: string;
   claude_prompt: string;
   default_claude_prompt: string;
+  /** Per computer: program that opens files of a repository ("" = automatic). */
+  editor: string;
+  /** Per computer: full path of Claude Code ("" = automatic). */
+  claude_path: string;
+  claude_found: string | null;
 }
 
 export interface TursoConnected {
@@ -193,4 +200,80 @@ export interface ProgressEvent {
 export interface CmdError {
   kind: "validation" | "unavailable" | "conflict" | "closed" | "internal";
   message: string;
+}
+
+export interface GitInfo {
+  root: string;
+  branch: string;
+  head: string;
+  remote: string | null;
+  upstream: string | null;
+  /** Files changed and not committed. */
+  dirty: number;
+}
+
+/** The repository of a project on this computer. */
+export interface RepoInfo {
+  project_id: number;
+  remote: string;
+  web_url: string | null;
+  /** Local folder (null = not linked on this computer). */
+  path: string | null;
+  path_exists: boolean;
+  git: GitInfo | null;
+  /** Claude Code executable found. */
+  claude: string | null;
+}
+
+export interface CommitInfo {
+  sha: string;
+  short: string;
+  author: string;
+  date: string;
+  subject: string;
+  body: string;
+}
+
+export type TouchRelation = "resolves" | "advances" | "related" | "cited";
+
+export interface TouchedItem {
+  item_id: number;
+  number: number;
+  addendum: number;
+  code: string;
+  title: string;
+  relation: TouchRelation;
+  reason: string;
+  commits: string[];
+  files: string[];
+  cited: boolean;
+}
+
+export interface CheckResult {
+  commits: CommitInfo[];
+  truncated: boolean;
+  items: TouchedItem[];
+  unmatched: string[];
+  pull: string | null;
+  cost_usd: number | null;
+}
+
+/** One "Atualizar e verificar". */
+export interface RepoCheck {
+  id: number;
+  project_id: number;
+  from_commit: string | null;
+  to_commit: string;
+  branch: string;
+  commit_count: number;
+  summary: string;
+  result: CheckResult;
+  created_at: string;
+}
+
+export interface CheckOutcome {
+  /** null = nothing new since the last check. */
+  check: RepoCheck | null;
+  pull: string | null;
+  since: string | null;
 }

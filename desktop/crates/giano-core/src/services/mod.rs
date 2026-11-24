@@ -10,6 +10,7 @@ pub mod items;
 pub mod markdown;
 pub mod notes;
 pub mod projects;
+pub mod repo;
 pub mod search;
 pub mod settings;
 
@@ -80,6 +81,10 @@ impl Giano {
 
     pub fn projects(&self) -> projects::ProjectService<'_> {
         projects::ProjectService { g: self }
+    }
+
+    pub fn repo(&self) -> repo::RepoService<'_> {
+        repo::RepoService { g: self }
     }
 
     pub fn items(&self) -> items::ItemService<'_> {
